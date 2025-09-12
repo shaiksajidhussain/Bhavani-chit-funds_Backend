@@ -1,0 +1,190 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      UserRole @default(AGENT)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  collections Collection[]
+  auctions    Auction[]
+  createdSchemes ChitScheme[]
+
+  @@map("users")
+}
+
+model ChitScheme {
+  id              String        @id @default(cuid())
+  name            String
+  chitValue       Int
+  duration        Int
+  durationType    DurationType
+  dailyPayment    Int
+  monthlyPayment  Int?
+  numberOfMembers Int
+  auctionRules    String?
+  status          SchemeStatus  @default(ACTIVE)
+  membersEnrolled Int          @default(0)
+  startDate       DateTime
+  endDate         DateTime?
+  lastDate        DateTime?     // Last date for the scheme
+  description     String?       // Additional description for the scheme
+  commissionRate  Float?        // Commission rate for the scheme (e.g., 0.05 for 5%)
+  penaltyRate     Float?        // Penalty rate for late payments (e.g., 0.02 for 2%)
+  minBidAmount    Int?          // Minimum bid amount for auctions
+  maxBidAmount    Int?          // Maximum bid amount for auctions
+  isActive        Boolean       @default(true) // Quick active/inactive toggle
+  createdBy       String?       // ID of the user who created this scheme
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  // Relations
+  customers Customer[]
+  auctions  Auction[]
+  creator   User?   @relation(fields: [createdBy], references: [id])
+
+  @@map("chit_schemes")
+}
+
+model Customer {
+  id           String        @id @default(cuid())
+  name         String
+  mobile       String
+  address      String
+  schemeId     String
+  startDate    DateTime
+  amountPerDay Int
+  duration     Int
+  status       CustomerStatus @default(ACTIVE)
+  balance      Int           @default(0)
+  group        String
+  documents    String[]      @default([])
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  scheme       ChitScheme    @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  collections  Collection[]
+  passbookEntries PassbookEntry[]
+  wonAuctions Auction[]
+
+  @@map("customers")
+}
+
+model Collection {
+  id              String   @id @default(cuid())
+  customerId      String
+  amountPaid      Int
+  collectorId     String
+  date            DateTime
+  balanceRemaining Int
+  paymentMethod   PaymentMethod
+  remarks         String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Relations
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  collector User    @relation(fields: [collectorId], references: [id])
+
+  @@map("collections")
+}
+
+model Auction {
+  id                  String      @id @default(cuid())
+  chitSchemeId        String
+  auctionDate         DateTime
+  winningMemberId     String?
+  amountReceived      Int         @default(0)
+  discountAmount      Int         @default(0)
+  newDailyPayment     Int?
+  previousDailyPayment Int?
+  status              AuctionStatus @default(SCHEDULED)
+  remarks             String?
+  createdById         String
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+
+  // Relations
+  chitScheme    ChitScheme @relation(fields: [chitSchemeId], references: [id], onDelete: Cascade)
+  winningMember Customer?  @relation(fields: [winningMemberId], references: [id])
+  createdBy     User       @relation(fields: [createdById], references: [id])
+
+  @@map("auctions")
+}
+
+model PassbookEntry {
+  id           String   @id @default(cuid())
+  customerId   String
+  month        Int
+  date         DateTime
+  dailyPayment Int
+  amount       Int
+  chittiAmount Int
+  type         EntryType @default(MANUAL)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  // Relations
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@map("passbook_entries")
+}
+
+// Enums
+enum UserRole {
+  ADMIN
+  AGENT
+  COLLECTOR
+}
+
+enum DurationType {
+  DAYS
+  MONTHS
+}
+
+enum SchemeStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum CustomerStatus {
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  UPI
+  CHEQUE
+  NOT_PAID
+}
+
+enum AuctionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum EntryType {
+  GENERATED
+  MANUAL
+}
