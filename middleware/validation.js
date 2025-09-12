@@ -87,9 +87,12 @@ const customerValidations = {
     body('address').trim().isLength({ min: 10 }).withMessage('Address must be at least 10 characters'),
     body('schemeId').isString().notEmpty().withMessage('Valid scheme ID is required'),
     body('startDate').isISO8601().withMessage('Valid start date is required'),
+    body('lastDate').optional().isISO8601().withMessage('Valid last date is required'),
     body('amountPerDay').isInt({ min: 1 }).withMessage('Amount per day must be at least ₹1'),
     body('duration').isInt({ min: 1 }).withMessage('Duration must be at least 1'),
+    body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
     body('group').trim().notEmpty().withMessage('Group is required'),
+    body('photo').optional().isString().withMessage('Photo must be a valid string'),
     body('status').optional().isIn(['ACTIVE', 'COMPLETED', 'DEFAULTED']).withMessage('Invalid status')
   ],
   
@@ -99,9 +102,12 @@ const customerValidations = {
     body('address').optional().trim().isLength({ min: 10 }).withMessage('Address must be at least 10 characters'),
     body('schemeId').optional().isString().notEmpty().withMessage('Valid scheme ID is required'),
     body('startDate').optional().isISO8601().withMessage('Valid start date is required'),
+    body('lastDate').optional().isISO8601().withMessage('Valid last date is required'),
     body('amountPerDay').optional().isInt({ min: 1 }).withMessage('Amount per day must be at least ₹1'),
     body('duration').optional().isInt({ min: 1 }).withMessage('Duration must be at least 1'),
+    body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
     body('group').optional().trim().notEmpty().withMessage('Group is required'),
+    body('photo').optional().isString().withMessage('Photo must be a valid string'),
     body('status').optional().isIn(['ACTIVE', 'COMPLETED', 'DEFAULTED']).withMessage('Invalid status')
   ]
 };

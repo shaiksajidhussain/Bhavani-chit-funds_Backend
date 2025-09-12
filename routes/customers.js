@@ -185,9 +185,12 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
       address,
       schemeId,
       startDate,
+      lastDate,
       amountPerDay,
       duration,
+      durationType = 'MONTHS',
       group,
+      photo,
       status = 'ACTIVE',
       documents = []
     } = req.body;
@@ -223,9 +226,12 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
         address,
         schemeId,
         startDate: new Date(startDate),
+        lastDate: lastDate ? new Date(lastDate) : null,
         amountPerDay,
         duration,
+        durationType,
         group,
+        photo,
         status,
         documents,
         balance
@@ -274,6 +280,18 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
   try {
     const { id } = req.params;
     const updateData = req.body;
+    
+    console.log('Received update request for customer ID:', id);
+    console.log('Update data received:', updateData);
+    console.log('Update data keys:', Object.keys(updateData));
+
+    // Manual validation for required fields
+    if (updateData.schemeId && typeof updateData.schemeId !== 'string') {
+      return res.status(400).json({
+        success: false,
+        message: 'schemeId must be a string'
+      });
+    }
 
     // Check if customer exists
     const existingCustomer = await prisma.customer.findUnique({
@@ -328,6 +346,14 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       });
     }
 
+    // Convert date strings to Date objects
+    if (updateData.startDate) {
+      updateData.startDate = new Date(updateData.startDate);
+    }
+    if (updateData.lastDate) {
+      updateData.lastDate = new Date(updateData.lastDate);
+    }
+
     // Recalculate balance if amount or duration changes
     if (updateData.amountPerDay || updateData.duration) {
       const amountPerDay = updateData.amountPerDay || existingCustomer.amountPerDay;
@@ -337,9 +363,20 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       updateData.balance = totalAmount - paidAmount;
     }
 
+    console.log('Updating customer with data:', updateData);
+    console.log('Customer ID:', id);
+    console.log('Data fields being sent to Prisma:', Object.keys(updateData));
+    
+    // Filter out any undefined or null values that might cause issues
+    const cleanUpdateData = Object.fromEntries(
+      Object.entries(updateData).filter(([key, value]) => value !== undefined && value !== null)
+    );
+    
+    console.log('Clean update data:', cleanUpdateData);
+    
     const updatedCustomer = await prisma.customer.update({
       where: { id },
-      data: updateData,
+      data: cleanUpdateData,
       include: {
         scheme: {
           select: {

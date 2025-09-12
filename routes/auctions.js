@@ -303,9 +303,12 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       }
     }
 
+    // Remove chitSchemeId from update data as it cannot be changed
+    const { chitSchemeId, ...allowedUpdateData } = updateData;
+    
     const updatedAuction = await prisma.auction.update({
       where: { id },
-      data: updateData,
+      data: allowedUpdateData,
       include: {
         chitScheme: {
           select: {

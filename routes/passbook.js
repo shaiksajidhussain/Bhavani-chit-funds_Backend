@@ -89,32 +89,16 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
       }
     });
 
-    // Generate schedule entries if requested
-    let scheduleEntries = [];
-    if (type === 'GENERATED' || !type) {
-      scheduleEntries = generateScheduleEntries(customer);
-    }
-
-    // Combine manual and generated entries
-    const allEntries = [...scheduleEntries, ...entries].sort((a, b) => {
-      if (sortBy === 'date') {
-        return sortOrder === 'asc' 
-          ? new Date(a.date) - new Date(b.date)
-          : new Date(b.date) - new Date(a.date);
-      }
-      return sortOrder === 'asc' ? a[sortBy] - b[sortBy] : b[sortBy] - a[sortBy];
-    });
-
     res.json({
       success: true,
       data: {
         customer,
-        entries: allEntries,
+        entries: entries,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: totalCount + scheduleEntries.length,
-          pages: Math.ceil((totalCount + scheduleEntries.length) / parseInt(limit))
+          total: totalCount,
+          pages: Math.ceil(totalCount / parseInt(limit))
         }
       }
     });
@@ -389,101 +373,6 @@ router.get('/customer/:customerId/summary', authenticateToken, async (req, res) 
   }
 });
 
-// Generate passbook entries for a customer
-router.post('/customer/:customerId/generate', authenticateToken, requireAgentOrAdmin, async (req, res) => {
-  try {
-    const { customerId } = req.params;
 
-    // Verify customer exists
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId },
-      include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
-          }
-        }
-      }
-    });
-
-    if (!customer) {
-      return res.status(404).json({
-        success: false,
-        message: 'Customer not found'
-      });
-    }
-
-    // Generate schedule entries
-    const scheduleEntries = generateScheduleEntries(customer);
-
-    // Create generated entries in database
-    const createdEntries = await Promise.all(
-      scheduleEntries.map(entry => 
-        prisma.passbookEntry.create({
-          data: {
-            customerId,
-            month: entry.month,
-            date: entry.date,
-            dailyPayment: entry.dailyPayment,
-            amount: entry.amount,
-            chittiAmount: entry.chittiAmount,
-            type: 'GENERATED'
-          }
-        })
-      )
-    );
-
-    res.status(201).json({
-      success: true,
-      message: 'Passbook entries generated successfully',
-      data: { entries: createdEntries }
-    });
-  } catch (error) {
-    console.error('Generate passbook entries error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to generate passbook entries',
-      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
-    });
-  }
-});
-
-// Helper function to generate schedule entries
-function generateScheduleEntries(customer) {
-  const entries = [];
-  const startDate = new Date(customer.startDate);
-  const duration = customer.duration;
-  const dailyPayment = customer.amountPerDay;
-
-  for (let i = 1; i <= duration; i++) {
-    const entryDate = new Date(startDate);
-    
-    if (customer.scheme.durationType === 'MONTHS') {
-      entryDate.setMonth(startDate.getMonth() + i - 1);
-    } else {
-      entryDate.setDate(startDate.getDate() + i - 1);
-    }
-
-    const month = customer.scheme.durationType === 'MONTHS' ? i : Math.ceil(i / 30);
-    const amount = dailyPayment * 30; // Assuming 30 days per month
-    const chittiAmount = customer.scheme.chitValue + (Math.floor(month / 2) * 10000); // Progressive chitti amount
-
-    entries.push({
-      month,
-      date: entryDate,
-      dailyPayment,
-      amount,
-      chittiAmount,
-      type: 'GENERATED'
-    });
-  }
-
-  return entries;
-}
 
 module.exports = router;

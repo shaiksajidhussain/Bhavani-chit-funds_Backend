@@ -146,11 +146,14 @@ async function main() {
       address: '123 Main Street, Bangalore, Karnataka 560001',
       schemeId: scheme1.id,
       startDate: new Date('2024-01-15'),
+      lastDate: new Date('2024-12-15'),
       amountPerDay: 500,
       duration: 30,
+      durationType: 'MONTHS',
       status: 'ACTIVE',
       balance: 45000,
       group: 'Group A',
+      photo: null,
       documents: ['Aadhar Card', 'PAN Card']
     },
     {
@@ -160,11 +163,14 @@ async function main() {
       address: '456 Park Avenue, Mumbai, Maharashtra 400001',
       schemeId: scheme2.id,
       startDate: new Date('2024-02-01'),
+      lastDate: new Date('2024-08-18'),
       amountPerDay: 2500,
       duration: 200,
+      durationType: 'DAYS',
       status: 'ACTIVE',
       balance: 125000,
       group: 'Group B',
+      photo: null,
       documents: ['Aadhar Card', 'Bank Passbook']
     },
     {
@@ -174,11 +180,14 @@ async function main() {
       address: '789 Garden Road, Delhi, Delhi 110001',
       schemeId: scheme1.id,
       startDate: new Date('2023-12-01'),
+      lastDate: new Date('2024-06-01'),
       amountPerDay: 500,
       duration: 30,
+      durationType: 'MONTHS',
       status: 'COMPLETED',
       balance: 0,
       group: 'Group A',
+      photo: null,
       documents: ['Aadhar Card', 'PAN Card', 'Voter ID']
     },
     {
@@ -188,11 +197,14 @@ async function main() {
       address: '321 Lake View, Pune, Maharashtra 411001',
       schemeId: scheme2.id,
       startDate: new Date('2024-03-15'),
+      lastDate: new Date('2024-08-18'),
       amountPerDay: 3000,
       duration: 200,
+      durationType: 'DAYS',
       status: 'DEFAULTED',
       balance: 180000,
       group: 'Group C',
+      photo: null,
       documents: ['Aadhar Card']
     },
     {
@@ -202,11 +214,14 @@ async function main() {
       address: '555 Tech Park, Hyderabad, Telangana 500001',
       schemeId: scheme3.id,
       startDate: new Date('2024-01-01'),
+      lastDate: new Date('2024-07-01'),
       amountPerDay: 300,
       duration: 18,
+      durationType: 'MONTHS',
       status: 'ACTIVE',
       balance: 27000,
       group: 'Group B',
+      photo: null,
       documents: ['Aadhar Card', 'PAN Card']
     }
   ];
@@ -327,44 +342,9 @@ async function main() {
 
   console.log('✅ Auctions created');
 
-  // Create sample passbook entries
-  const passbookEntries = [
-    {
-      customerId: 'customer-1',
-      month: 1,
-      date: new Date('2024-01-15'),
-      dailyPayment: 500,
-      amount: 15000,
-      chittiAmount: 500000,
-      type: 'MANUAL'
-    },
-    {
-      customerId: 'customer-1',
-      month: 2,
-      date: new Date('2024-02-15'),
-      dailyPayment: 500,
-      amount: 15000,
-      chittiAmount: 510000,
-      type: 'MANUAL'
-    },
-    {
-      customerId: 'customer-2',
-      month: 1,
-      date: new Date('2024-02-01'),
-      dailyPayment: 2500,
-      amount: 75000,
-      chittiAmount: 500000,
-      type: 'MANUAL'
-    }
-  ];
-
-  for (const entryData of passbookEntries) {
-    await prisma.passbookEntry.create({
-      data: entryData
-    });
-  }
-
-  console.log('✅ Passbook entries created');
+  // Clear existing passbook entries (remove seeded data)
+  await prisma.passbookEntry.deleteMany({});
+  console.log('✅ Existing passbook entries cleared');
 
   console.log('🎉 Database seeding completed successfully!');
   console.log('\n📋 Login credentials:');
