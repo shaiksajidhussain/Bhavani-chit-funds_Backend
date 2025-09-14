@@ -528,4 +528,304 @@ router.get('/collections/efficiency', authenticateToken, async (req, res) => {
   }
 });
 
+// Get daily report data
+router.get('/daily', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date) : new Date();
+    const startOfDay = new Date(targetDate.setHours(0, 0, 0, 0));
+    const endOfDay = new Date(targetDate.setHours(23, 59, 59, 999));
+
+    // Get collections for the day
+    const dailyCollections = await prisma.collection.findMany({
+      where: {
+        date: {
+          gte: startOfDay,
+          lte: endOfDay
+        }
+      },
+      include: {
+        customer: true
+      }
+    });
+
+    const totalCollection = dailyCollections.reduce((sum, collection) => sum + (collection.amountPaid || 0), 0);
+    const paidMembers = dailyCollections.filter(c => c.amountPaid > 0).length;
+    const pendingMembers = dailyCollections.filter(c => c.amountPaid === 0).length;
+    
+    // Get defaulters (customers with overdue payments)
+    const defaulters = await prisma.customer.count({
+      where: {
+        status: 'DEFAULTED',
+        lastDate: {
+          lt: startOfDay
+        }
+      }
+    });
+
+    const totalMembers = paidMembers + pendingMembers;
+    const collectionRate = totalMembers > 0 ? ((paidMembers / totalMembers) * 100).toFixed(1) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalCollection,
+        paidMembers,
+        pendingMembers,
+        defaulters,
+        collectionRate: parseFloat(collectionRate)
+      }
+    });
+  } catch (error) {
+    console.error('Daily report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate daily report',
+      error: error.message
+    });
+  }
+});
+
+// Get monthly report data
+router.get('/monthly', authenticateToken, async (req, res) => {
+  try {
+    const { year, month } = req.query;
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
+    const targetMonth = month ? parseInt(month) - 1 : new Date().getMonth();
+    
+    const startOfMonth = new Date(targetYear, targetMonth, 1);
+    const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
+
+    // Get collections for the month
+    const monthlyCollections = await prisma.collection.findMany({
+      where: {
+        date: {
+          gte: startOfMonth,
+          lte: endOfMonth
+        }
+      },
+      include: {
+        customer: true
+      }
+    });
+
+    const totalCollection = monthlyCollections.reduce((sum, collection) => sum + (collection.amountPaid || 0), 0);
+    const paidMembers = monthlyCollections.filter(c => c.amountPaid > 0).length;
+    const pendingMembers = monthlyCollections.filter(c => c.amountPaid === 0).length;
+    
+    // Get defaulters for the month
+    const defaulters = await prisma.customer.count({
+      where: {
+        status: 'DEFAULTED',
+        lastDate: {
+          gte: startOfMonth,
+          lte: endOfMonth
+        }
+      }
+    });
+
+    const totalMembers = paidMembers + pendingMembers;
+    const collectionRate = totalMembers > 0 ? ((paidMembers / totalMembers) * 100).toFixed(1) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalCollection,
+        paidMembers,
+        pendingMembers,
+        defaulters,
+        collectionRate: parseFloat(collectionRate)
+      }
+    });
+  } catch (error) {
+    console.error('Monthly report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate monthly report',
+      error: error.message
+    });
+  }
+});
+
+// Get yearly report data
+router.get('/yearly', authenticateToken, async (req, res) => {
+  try {
+    const { year } = req.query;
+    const targetYear = year ? parseInt(year) : new Date().getFullYear();
+    
+    const startOfYear = new Date(targetYear, 0, 1);
+    const endOfYear = new Date(targetYear, 11, 31, 23, 59, 59, 999);
+
+    // Get collections for the year
+    const yearlyCollections = await prisma.collection.findMany({
+      where: {
+        date: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      },
+      include: {
+        customer: true
+      }
+    });
+
+    const totalCollection = yearlyCollections.reduce((sum, collection) => sum + (collection.amountPaid || 0), 0);
+    const paidMembers = yearlyCollections.filter(c => c.amountPaid > 0).length;
+    const pendingMembers = yearlyCollections.filter(c => c.amountPaid === 0).length;
+    
+    // Get defaulters for the year
+    const defaulters = await prisma.customer.count({
+      where: {
+        status: 'DEFAULTED',
+        lastDate: {
+          gte: startOfYear,
+          lte: endOfYear
+        }
+      }
+    });
+
+    const totalMembers = paidMembers + pendingMembers;
+    const collectionRate = totalMembers > 0 ? ((paidMembers / totalMembers) * 100).toFixed(1) : 0;
+
+    res.json({
+      success: true,
+      data: {
+        totalCollection,
+        paidMembers,
+        pendingMembers,
+        defaulters,
+        collectionRate: parseFloat(collectionRate)
+      }
+    });
+  } catch (error) {
+    console.error('Yearly report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate yearly report',
+      error: error.message
+    });
+  }
+});
+
+// Get top customers report
+router.get('/top-customers', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const topCustomers = await prisma.customer.findMany({
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        amountPerDay: true,
+        duration: true,
+        _count: {
+          select: {
+            collections: true
+          }
+        }
+      },
+      orderBy: {
+        collections: {
+          _count: 'desc'
+        }
+      },
+      take: parseInt(limit)
+    });
+
+    // Calculate total paid and balance for each customer
+    const customersWithStats = await Promise.all(
+      topCustomers.map(async (customer) => {
+        const totalPaid = await prisma.collection.aggregate({
+          where: { customerId: customer.id },
+          _sum: { amountPaid: true }
+        });
+
+        const totalAmount = (customer.amountPerDay || 0) * (customer.duration || 0);
+        const balance = totalAmount - (totalPaid._sum.amountPaid || 0);
+
+        return {
+          id: customer.id,
+          name: customer.name,
+          totalPaid: totalPaid._sum.amountPaid || 0,
+          balance: Math.max(0, balance),
+          status: customer.status
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: customersWithStats
+    });
+  } catch (error) {
+    console.error('Top customers report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate top customers report',
+      error: error.message
+    });
+  }
+});
+
+// Get scheme performance report
+router.get('/scheme-performance', authenticateToken, async (req, res) => {
+  try {
+    const schemes = await prisma.chitScheme.findMany({
+      select: {
+        id: true,
+        name: true,
+        chitValue: true,
+        duration: true,
+        numberOfMembers: true,
+        status: true,
+        _count: {
+          select: {
+            customers: true
+          }
+        }
+      }
+    });
+
+    const schemePerformance = await Promise.all(
+      schemes.map(async (scheme) => {
+        // Get total collections for this scheme
+        const totalCollections = await prisma.collection.aggregate({
+          where: {
+            customer: {
+              schemeId: scheme.id
+            }
+          },
+          _sum: { amountPaid: true }
+        });
+
+        const totalExpected = scheme.chitValue * scheme.numberOfMembers;
+        const totalCollected = totalCollections._sum.amountPaid || 0;
+        const collectionRate = totalExpected > 0 ? ((totalCollected / totalExpected) * 100).toFixed(1) : 0;
+
+        return {
+          id: scheme.id,
+          scheme: scheme.name,
+          members: scheme.numberOfMembers,
+          enrolled: scheme._count.customers,
+          collection: parseFloat(collectionRate),
+          status: scheme.status
+        };
+      })
+    );
+
+    res.json({
+      success: true,
+      data: schemePerformance
+    });
+  } catch (error) {
+    console.error('Scheme performance report error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate scheme performance report',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router;

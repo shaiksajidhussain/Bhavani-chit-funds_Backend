@@ -122,7 +122,9 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
       dailyPayment,
       amount,
       chittiAmount,
-      type = 'MANUAL'
+      type = 'MANUAL',
+      paymentMethod = 'CASH',
+      paymentFrequency = 'DAILY'
     } = req.body;
 
     // Verify customer exists
@@ -161,7 +163,9 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
         dailyPayment,
         amount,
         chittiAmount,
-        type
+        type,
+        paymentMethod,
+        paymentFrequency
       },
       include: {
         customer: {

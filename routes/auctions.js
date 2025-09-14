@@ -174,6 +174,12 @@ router.post('/', authenticateToken, requireAgentOrAdmin, auctionValidations.crea
       remarks
     } = req.body;
 
+    // Clean up empty strings for integer fields - convert to null
+    const cleanedAmountReceived = amountReceived === '' ? null : (typeof amountReceived === 'string' ? parseInt(amountReceived) : amountReceived);
+    const cleanedDiscountAmount = discountAmount === '' ? null : (typeof discountAmount === 'string' ? parseInt(discountAmount) : discountAmount);
+    const cleanedNewDailyPayment = newDailyPayment === '' ? null : (typeof newDailyPayment === 'string' ? parseInt(newDailyPayment) : newDailyPayment);
+    const cleanedPreviousDailyPayment = previousDailyPayment === '' ? null : (typeof previousDailyPayment === 'string' ? parseInt(previousDailyPayment) : previousDailyPayment);
+
     // Verify chit scheme exists
     const chitScheme = await prisma.chitScheme.findUnique({
       where: { id: chitSchemeId }
@@ -213,10 +219,10 @@ router.post('/', authenticateToken, requireAgentOrAdmin, auctionValidations.crea
         chitSchemeId,
         auctionDate: new Date(auctionDate),
         winningMemberId,
-        amountReceived,
-        discountAmount,
-        newDailyPayment,
-        previousDailyPayment,
+        amountReceived: cleanedAmountReceived,
+        discountAmount: cleanedDiscountAmount,
+        newDailyPayment: cleanedNewDailyPayment,
+        previousDailyPayment: cleanedPreviousDailyPayment,
         status,
         remarks,
         createdById: req.user.id
@@ -306,9 +312,40 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
     // Remove chitSchemeId from update data as it cannot be changed
     const { chitSchemeId, ...allowedUpdateData } = updateData;
     
+    // Clean up empty strings for integer fields - convert to null
+    const cleanedUpdateData = { ...allowedUpdateData };
+    
+    // Convert empty strings to null for optional integer fields
+    if (cleanedUpdateData.amountReceived === '') {
+      cleanedUpdateData.amountReceived = null;
+    }
+    if (cleanedUpdateData.discountAmount === '') {
+      cleanedUpdateData.discountAmount = null;
+    }
+    if (cleanedUpdateData.newDailyPayment === '') {
+      cleanedUpdateData.newDailyPayment = null;
+    }
+    if (cleanedUpdateData.previousDailyPayment === '') {
+      cleanedUpdateData.previousDailyPayment = null;
+    }
+    
+    // Convert string numbers to integers for fields that have values
+    if (cleanedUpdateData.amountReceived && typeof cleanedUpdateData.amountReceived === 'string') {
+      cleanedUpdateData.amountReceived = parseInt(cleanedUpdateData.amountReceived);
+    }
+    if (cleanedUpdateData.discountAmount && typeof cleanedUpdateData.discountAmount === 'string') {
+      cleanedUpdateData.discountAmount = parseInt(cleanedUpdateData.discountAmount);
+    }
+    if (cleanedUpdateData.newDailyPayment && typeof cleanedUpdateData.newDailyPayment === 'string') {
+      cleanedUpdateData.newDailyPayment = parseInt(cleanedUpdateData.newDailyPayment);
+    }
+    if (cleanedUpdateData.previousDailyPayment && typeof cleanedUpdateData.previousDailyPayment === 'string') {
+      cleanedUpdateData.previousDailyPayment = parseInt(cleanedUpdateData.previousDailyPayment);
+    }
+    
     const updatedAuction = await prisma.auction.update({
       where: { id },
-      data: allowedUpdateData,
+      data: cleanedUpdateData,
       include: {
         chitScheme: {
           select: {

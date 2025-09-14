@@ -45,8 +45,32 @@ const chitSchemeValidations = {
     body('chitValue').isInt({ min: 1000 }).withMessage('Chit value must be at least ₹1000'),
     body('duration').isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
-    body('dailyPayment').isInt({ min: 1 }).withMessage('Daily payment must be at least ₹1'),
-    body('monthlyPayment').optional().isInt({ min: 1 }).withMessage('Monthly payment must be at least ₹1'),
+    body('paymentType').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Payment type must be DAILY or MONTHLY'),
+    // Conditional validation for payment fields
+    body('dailyPayment').optional().custom((value, { req }) => {
+      const paymentType = req.body.paymentType || 'DAILY';
+      if (paymentType === 'DAILY') {
+        if (value === null || value === undefined || value === '') {
+          throw new Error('Daily payment is required when payment type is DAILY');
+        }
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
+    body('monthlyPayment').optional().custom((value, { req }) => {
+      const paymentType = req.body.paymentType || 'DAILY';
+      if (paymentType === 'MONTHLY') {
+        if (value === null || value === undefined || value === '') {
+          throw new Error('Monthly payment is required when payment type is MONTHLY');
+        }
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Monthly payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
     body('numberOfMembers').isInt({ min: 2 }).withMessage('Number of members must be at least 2'),
     body('startDate').isISO8601().withMessage('Valid start date is required'),
     body('lastDate').optional().isISO8601().withMessage('Valid last date is required'),
@@ -64,8 +88,32 @@ const chitSchemeValidations = {
     body('chitValue').optional().isInt({ min: 1000 }).withMessage('Chit value must be at least ₹1000'),
     body('duration').optional().isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
-    body('dailyPayment').optional().isInt({ min: 1 }).withMessage('Daily payment must be at least ₹1'),
-    body('monthlyPayment').optional().isInt({ min: 1 }).withMessage('Monthly payment must be at least ₹1'),
+    body('paymentType').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Payment type must be DAILY or MONTHLY'),
+    // Conditional validation for payment fields
+    body('dailyPayment').optional().custom((value, { req }) => {
+      const paymentType = req.body.paymentType;
+      if (paymentType === 'DAILY') {
+        if (value === null || value === undefined || value === '') {
+          throw new Error('Daily payment is required when payment type is DAILY');
+        }
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
+    body('monthlyPayment').optional().custom((value, { req }) => {
+      const paymentType = req.body.paymentType;
+      if (paymentType === 'MONTHLY') {
+        if (value === null || value === undefined || value === '') {
+          throw new Error('Monthly payment is required when payment type is MONTHLY');
+        }
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Monthly payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
     body('numberOfMembers').optional().isInt({ min: 2 }).withMessage('Number of members must be at least 2'),
     body('startDate').optional().isISO8601().withMessage('Valid start date is required'),
     body('lastDate').optional().isISO8601().withMessage('Valid last date is required'),
@@ -92,7 +140,12 @@ const customerValidations = {
     body('duration').isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
     body('group').trim().notEmpty().withMessage('Group is required'),
-    body('photo').optional().isString().withMessage('Photo must be a valid string'),
+    body('photo').optional().custom((value) => {
+      if (value !== null && value !== undefined && typeof value !== 'string') {
+        throw new Error('Photo must be a valid string or null');
+      }
+      return true;
+    }),
     body('status').optional().isIn(['ACTIVE', 'COMPLETED', 'DEFAULTED']).withMessage('Invalid status')
   ],
   
@@ -107,7 +160,12 @@ const customerValidations = {
     body('duration').optional().isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
     body('group').optional().trim().notEmpty().withMessage('Group is required'),
-    body('photo').optional().isString().withMessage('Photo must be a valid string'),
+    body('photo').optional().custom((value) => {
+      if (value !== null && value !== undefined && typeof value !== 'string') {
+        throw new Error('Photo must be a valid string or null');
+      }
+      return true;
+    }),
     body('status').optional().isIn(['ACTIVE', 'COMPLETED', 'DEFAULTED']).withMessage('Invalid status')
   ]
 };
@@ -135,19 +193,75 @@ const auctionValidations = {
   create: [
     body('chitSchemeId').isString().notEmpty().withMessage('Valid chit scheme ID is required'),
     body('auctionDate').isISO8601().withMessage('Valid auction date is required'),
-    body('amountReceived').optional().isInt({ min: 0 }).withMessage('Amount received must be non-negative'),
-    body('discountAmount').optional().isInt({ min: 0 }).withMessage('Discount amount must be non-negative'),
-    body('newDailyPayment').optional().isInt({ min: 1 }).withMessage('New daily payment must be at least ₹1'),
-    body('previousDailyPayment').optional().isInt({ min: 1 }).withMessage('Previous daily payment must be at least ₹1'),
+    body('amountReceived').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 0) {
+          throw new Error('Amount received must be non-negative');
+        }
+      }
+      return true;
+    }),
+    body('discountAmount').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 0) {
+          throw new Error('Discount amount must be non-negative');
+        }
+      }
+      return true;
+    }),
+    body('newDailyPayment').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('New daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
+    body('previousDailyPayment').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Previous daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
     body('status').optional().isIn(['SCHEDULED', 'COMPLETED', 'CANCELLED']).withMessage('Invalid status')
   ],
   
   update: [
     body('auctionDate').optional().isISO8601().withMessage('Valid auction date is required'),
-    body('amountReceived').optional().isInt({ min: 0 }).withMessage('Amount received must be non-negative'),
-    body('discountAmount').optional().isInt({ min: 0 }).withMessage('Discount amount must be non-negative'),
-    body('newDailyPayment').optional().isInt({ min: 1 }).withMessage('New daily payment must be at least ₹1'),
-    body('previousDailyPayment').optional().isInt({ min: 1 }).withMessage('Previous daily payment must be at least ₹1'),
+    body('amountReceived').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 0) {
+          throw new Error('Amount received must be non-negative');
+        }
+      }
+      return true;
+    }),
+    body('discountAmount').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 0) {
+          throw new Error('Discount amount must be non-negative');
+        }
+      }
+      return true;
+    }),
+    body('newDailyPayment').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('New daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
+    body('previousDailyPayment').optional().custom((value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        if (!Number.isInteger(Number(value)) || Number(value) < 1) {
+          throw new Error('Previous daily payment must be at least ₹1');
+        }
+      }
+      return true;
+    }),
     body('status').optional().isIn(['SCHEDULED', 'COMPLETED', 'CANCELLED']).withMessage('Invalid status')
   ]
 };
@@ -161,7 +275,9 @@ const passbookValidations = {
     body('dailyPayment').isInt({ min: 0 }).withMessage('Daily payment must be non-negative'),
     body('amount').isInt({ min: 0 }).withMessage('Amount must be non-negative'),
     body('chittiAmount').isInt({ min: 0 }).withMessage('Chitti amount must be non-negative'),
-    body('type').optional().isIn(['GENERATED', 'MANUAL']).withMessage('Invalid entry type')
+    body('type').optional().isIn(['GENERATED', 'MANUAL']).withMessage('Invalid entry type'),
+    body('paymentMethod').optional().isIn(['CASH', 'BANK_TRANSFER', 'UPI', 'CHEQUE', 'NOT_PAID']).withMessage('Invalid payment method'),
+    body('paymentFrequency').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Invalid payment frequency')
   ]
 };
 

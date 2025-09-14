@@ -34,7 +34,8 @@ model ChitScheme {
   chitValue       Int
   duration        Int
   durationType    DurationType
-  dailyPayment    Int
+  paymentType     PaymentType   @default(DAILY) // DAILY or MONTHLY
+  dailyPayment    Int?
   monthlyPayment  Int?
   numberOfMembers Int
   auctionRules    String?
@@ -132,16 +133,18 @@ model Auction {
 }
 
 model PassbookEntry {
-  id           String   @id @default(cuid())
-  customerId   String
-  month        Int
-  date         DateTime
-  dailyPayment Int
-  amount       Int
-  chittiAmount Int
-  type         EntryType @default(MANUAL)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id               String            @id @default(cuid())
+  customerId       String
+  month            Int
+  date             DateTime
+  dailyPayment     Int
+  amount           Int
+  chittiAmount     Int
+  type             EntryType         @default(MANUAL)
+  paymentMethod    PaymentMethod     @default(CASH)
+  paymentFrequency PaymentFrequency  @default(DAILY)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
 
   // Relations
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -190,4 +193,14 @@ enum AuctionStatus {
 enum EntryType {
   GENERATED
   MANUAL
+}
+
+enum PaymentFrequency {
+  DAILY
+  MONTHLY
+}
+
+enum PaymentType {
+  DAILY
+  MONTHLY
 }
