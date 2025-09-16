@@ -139,7 +139,6 @@ const customerValidations = {
     body('amountPerDay').isInt({ min: 1 }).withMessage('Amount per day must be at least ₹1'),
     body('duration').isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
-    body('group').trim().notEmpty().withMessage('Group is required'),
     body('photo').optional().custom((value) => {
       if (value !== null && value !== undefined && typeof value !== 'string') {
         throw new Error('Photo must be a valid string or null');
@@ -159,7 +158,6 @@ const customerValidations = {
     body('amountPerDay').optional().isInt({ min: 1 }).withMessage('Amount per day must be at least ₹1'),
     body('duration').optional().isInt({ min: 1 }).withMessage('Duration must be at least 1'),
     body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
-    body('group').optional().trim().notEmpty().withMessage('Group is required'),
     body('photo').optional().custom((value) => {
       if (value !== null && value !== undefined && typeof value !== 'string') {
         throw new Error('Photo must be a valid string or null');
@@ -277,7 +275,8 @@ const passbookValidations = {
     body('chittiAmount').isInt({ min: 0 }).withMessage('Chitti amount must be non-negative'),
     body('type').optional().isIn(['GENERATED', 'MANUAL']).withMessage('Invalid entry type'),
     body('paymentMethod').optional().isIn(['CASH', 'BANK_TRANSFER', 'UPI', 'CHEQUE', 'NOT_PAID']).withMessage('Invalid payment method'),
-    body('paymentFrequency').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Invalid payment frequency')
+    body('paymentFrequency').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Invalid payment frequency'),
+    body('chitLifting').optional().isIn(['YES', 'NO']).withMessage('Chit lifting must be YES or NO')
   ]
 };
 

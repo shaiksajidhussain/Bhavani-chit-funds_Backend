@@ -77,8 +77,7 @@ router.get('/revenue', authenticateToken, async (req, res) => {
       startDate, 
       endDate, 
       groupBy = 'day',
-      schemeId,
-      group
+      schemeId
     } = req.query;
 
     if (!startDate || !endDate) {
@@ -106,12 +105,6 @@ router.get('/revenue', authenticateToken, async (req, res) => {
       };
     }
 
-    if (group) {
-      where.customer = {
-        ...where.customer,
-        group: group
-      };
-    }
 
     const collections = await prisma.collection.findMany({
       where,
@@ -120,7 +113,6 @@ router.get('/revenue', authenticateToken, async (req, res) => {
           select: {
             id: true,
             name: true,
-            group: true,
             scheme: {
               select: {
                 id: true,
@@ -155,7 +147,6 @@ router.get('/revenue', authenticateToken, async (req, res) => {
           totalRevenue: 0,
           totalCollections: 0,
           byScheme: {},
-          byGroup: {},
           byPaymentMethod: {}
         };
       }
@@ -170,14 +161,6 @@ router.get('/revenue', authenticateToken, async (req, res) => {
       }
       groupedData[key].byScheme[schemeName].amount += collection.amountPaid;
       groupedData[key].byScheme[schemeName].count += 1;
-
-      // Group by customer group
-      const customerGroup = collection.customer.group;
-      if (!groupedData[key].byGroup[customerGroup]) {
-        groupedData[key].byGroup[customerGroup] = { amount: 0, count: 0 };
-      }
-      groupedData[key].byGroup[customerGroup].amount += collection.amountPaid;
-      groupedData[key].byGroup[customerGroup].count += 1;
 
       // Group by payment method
       const paymentMethod = collection.paymentMethod;
@@ -209,7 +192,6 @@ router.get('/customers/performance', authenticateToken, async (req, res) => {
   try {
     const { 
       schemeId,
-      group,
       status,
       sortBy = 'totalPaid',
       sortOrder = 'desc'
@@ -218,7 +200,6 @@ router.get('/customers/performance', authenticateToken, async (req, res) => {
     // Build where clause
     const where = {};
     if (schemeId) where.schemeId = schemeId;
-    if (group) where.group = group;
     if (status) where.status = status;
 
     const customers = await prisma.customer.findMany({
@@ -267,7 +248,6 @@ router.get('/customers/performance', authenticateToken, async (req, res) => {
           id: customer.id,
           name: customer.name,
           mobile: customer.mobile,
-          group: customer.group,
           status: customer.status,
           startDate: customer.startDate
         },
@@ -416,8 +396,7 @@ router.get('/collections/efficiency', authenticateToken, async (req, res) => {
     const { 
       startDate, 
       endDate,
-      collectorId,
-      group
+      collectorId
     } = req.query;
 
     if (!startDate || !endDate) {
@@ -443,11 +422,6 @@ router.get('/collections/efficiency', authenticateToken, async (req, res) => {
       where.collectorId = collectorId;
     }
 
-    if (group) {
-      where.customer = {
-        group: group
-      };
-    }
 
     const collections = await prisma.collection.findMany({
       where,
@@ -456,7 +430,6 @@ router.get('/collections/efficiency', authenticateToken, async (req, res) => {
           select: {
             id: true,
             name: true,
-            group: true,
             scheme: {
               select: {
                 id: true,

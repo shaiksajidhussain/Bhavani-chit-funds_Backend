@@ -90,7 +90,6 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
             name: true,
             mobile: true,
             status: true,
-            group: true,
             startDate: true,
             balance: true
           }
@@ -325,6 +324,124 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
     res.status(500).json({
       success: false,
       message: 'Failed to delete chit scheme',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Get scheme members
+router.get('/:id/members', authenticateToken, commonValidations.id, handleValidationErrors, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { 
+      page = 1, 
+      limit = 50,
+      status,
+      search,
+      sortBy = 'createdAt',
+      sortOrder = 'desc'
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const take = parseInt(limit);
+
+    // Verify scheme exists
+    const scheme = await prisma.chitScheme.findUnique({
+      where: { id },
+      select: { id: true, name: true }
+    });
+
+    if (!scheme) {
+      return res.status(404).json({
+        success: false,
+        message: 'Chit scheme not found'
+      });
+    }
+
+    // Build where clause for customers
+    const where = { schemeId: id };
+    
+    if (status) {
+      where.status = status;
+    }
+    
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { mobile: { contains: search, mode: 'insensitive' } },
+        { address: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Get total count
+    const totalCount = await prisma.customer.count({ where });
+
+    // Get customers
+    const customers = await prisma.customer.findMany({
+      where,
+      skip,
+      take,
+      orderBy: { [sortBy]: sortOrder },
+      select: {
+        id: true,
+        name: true,
+        mobile: true,
+        address: true,
+        status: true,
+        startDate: true,
+        lastDate: true,
+        amountPerDay: true,
+        duration: true,
+        durationType: true,
+        balance: true,
+        photo: true,
+        createdAt: true,
+        _count: {
+          select: {
+            collections: true,
+            passbookEntries: true
+          }
+        }
+      }
+    });
+
+    // Calculate member statistics
+    const allCustomers = await prisma.customer.findMany({
+      where: { schemeId: id },
+      select: { status: true, balance: true, amountPerDay: true }
+    });
+
+    const stats = {
+      totalMembers: allCustomers.length,
+      activeMembers: allCustomers.filter(c => c.status === 'ACTIVE').length,
+      completedMembers: allCustomers.filter(c => c.status === 'COMPLETED').length,
+      defaultedMembers: allCustomers.filter(c => c.status === 'DEFAULTED').length,
+      totalBalance: allCustomers.reduce((sum, c) => sum + c.balance, 0),
+      totalAmountPaid: allCustomers.reduce((sum, c) => sum + (c.amountPerDay * c.duration - c.balance), 0)
+    };
+
+    res.json({
+      success: true,
+      data: {
+        scheme: {
+          id: scheme.id,
+          name: scheme.name
+        },
+        members: customers,
+        stats,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: totalCount,
+          pages: Math.ceil(totalCount / parseInt(limit))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get scheme members error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch scheme members',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }

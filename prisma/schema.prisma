@@ -75,7 +75,6 @@ model Customer {
   durationType DurationType  @default(MONTHS)
   status       CustomerStatus @default(ACTIVE)
   balance      Int           @default(0)
-  group        String
   photo        String?
   documents    String[]      @default([])
   createdAt    DateTime      @default(now())
@@ -143,6 +142,7 @@ model PassbookEntry {
   type             EntryType         @default(MANUAL)
   paymentMethod    PaymentMethod     @default(CASH)
   paymentFrequency PaymentFrequency  @default(DAILY)
+  chitLifting      ChitLiftingStatus @default(NO)
   createdAt        DateTime          @default(now())
   updatedAt        DateTime          @updatedAt
 
@@ -203,4 +203,9 @@ enum PaymentFrequency {
 enum PaymentType {
   DAILY
   MONTHLY
+}
+
+enum ChitLiftingStatus {
+  YES
+  NO
 }

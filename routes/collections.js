@@ -72,7 +72,6 @@ router.get('/', authenticateToken, async (req, res) => {
             id: true,
             name: true,
             mobile: true,
-            group: true,
             scheme: {
               select: {
                 id: true,
@@ -128,7 +127,6 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
             name: true,
             mobile: true,
             address: true,
-            group: true,
             status: true,
             scheme: {
               select: {
@@ -221,7 +219,6 @@ router.post('/', authenticateToken, requireCollectorOrAdmin, collectionValidatio
             id: true,
             name: true,
             mobile: true,
-            group: true,
             scheme: {
               select: {
                 id: true,
@@ -295,7 +292,6 @@ router.put('/:id', authenticateToken, requireCollectorOrAdmin, commonValidations
             id: true,
             name: true,
             mobile: true,
-            group: true,
             scheme: {
               select: {
                 id: true,
@@ -509,7 +505,6 @@ router.get('/stats/range', authenticateToken, async (req, res) => {
         paymentMethod: true,
         customer: {
           select: {
-            group: true
           }
         }
       },
@@ -537,8 +532,7 @@ router.get('/stats/range', authenticateToken, async (req, res) => {
           date: key,
           totalCollected: 0,
           totalCollections: 0,
-          byMethod: {},
-          byGroup: {}
+          byMethod: {}
         };
       }
 
@@ -552,12 +546,6 @@ router.get('/stats/range', authenticateToken, async (req, res) => {
       groupedData[key].byMethod[collection.paymentMethod].amount += collection.amountPaid;
       groupedData[key].byMethod[collection.paymentMethod].count += 1;
       
-      // Group by customer group
-      if (!groupedData[key].byGroup[collection.customer.group]) {
-        groupedData[key].byGroup[collection.customer.group] = { amount: 0, count: 0 };
-      }
-      groupedData[key].byGroup[collection.customer.group].amount += collection.amountPaid;
-      groupedData[key].byGroup[collection.customer.group].count += 1;
     });
 
     const stats = Object.values(groupedData);

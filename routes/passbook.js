@@ -82,7 +82,6 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
             id: true,
             name: true,
             mobile: true,
-            group: true,
             status: true
           }
         }
@@ -124,7 +123,8 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
       chittiAmount,
       type = 'MANUAL',
       paymentMethod = 'CASH',
-      paymentFrequency = 'DAILY'
+      paymentFrequency = 'DAILY',
+      chitLifting = 'NO'
     } = req.body;
 
     // Verify customer exists
@@ -165,7 +165,8 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
         chittiAmount,
         type,
         paymentMethod,
-        paymentFrequency
+        paymentFrequency,
+        chitLifting
       },
       include: {
         customer: {
@@ -173,7 +174,6 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
             id: true,
             name: true,
             mobile: true,
-            group: true,
             status: true
           }
         }
@@ -230,7 +230,6 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
             id: true,
             name: true,
             mobile: true,
-            group: true,
             status: true
           }
         }

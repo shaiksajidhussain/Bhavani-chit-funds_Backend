@@ -13,7 +13,6 @@ router.get('/', authenticateToken, async (req, res) => {
       page = 1, 
       limit = 10, 
       status, 
-      group,
       schemeId,
       search,
       sortBy = 'createdAt',
@@ -28,10 +27,6 @@ router.get('/', authenticateToken, async (req, res) => {
     
     if (status) {
       where.status = status;
-    }
-    
-    if (group) {
-      where.group = group;
     }
     
     if (schemeId) {
@@ -189,7 +184,6 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
       amountPerDay,
       duration,
       durationType = 'MONTHS',
-      group,
       photo,
       status = 'ACTIVE',
       documents = []
@@ -230,7 +224,6 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
         amountPerDay,
         duration,
         durationType,
-        group,
         photo,
         status,
         documents,
@@ -471,10 +464,9 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
 // Get customer statistics
 router.get('/stats/overview', authenticateToken, async (req, res) => {
   try {
-    const { group, schemeId } = req.query;
+    const { schemeId } = req.query;
 
     const where = {};
-    if (group) where.group = group;
     if (schemeId) where.schemeId = schemeId;
 
     const [

@@ -65,7 +65,6 @@ router.get('/', authenticateToken, async (req, res) => {
             id: true,
             name: true,
             mobile: true,
-            group: true
           }
         },
         createdBy: {
@@ -124,7 +123,6 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
             name: true,
             mobile: true,
             address: true,
-            group: true,
             status: true
           }
         },
@@ -242,7 +240,6 @@ router.post('/', authenticateToken, requireAgentOrAdmin, auctionValidations.crea
             id: true,
             name: true,
             mobile: true,
-            group: true
           }
         },
         createdBy: {
@@ -361,7 +358,6 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
             id: true,
             name: true,
             mobile: true,
-            group: true
           }
         },
         createdBy: {
@@ -514,7 +510,6 @@ router.get('/upcoming/list', authenticateToken, async (req, res) => {
             id: true,
             name: true,
             mobile: true,
-            group: true
           }
         }
       }
