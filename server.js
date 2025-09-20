@@ -17,6 +17,20 @@ const passbookRoutes = require('./routes/passbook');
 const reportRoutes = require('./routes/reports');
 
 const app = express();
+
+// Trust proxy - required for rate limiting behind proxies/load balancers
+// This tells Express to trust the X-Forwarded-* headers
+app.set('trust proxy', true);
+
+// Additional proxy configuration for different deployment scenarios
+if (process.env.NODE_ENV === 'production') {
+  // In production, trust the first proxy
+  app.set('trust proxy', 1);
+} else {
+  // In development, trust all proxies
+  app.set('trust proxy', true);
+}
+
 const prisma = new PrismaClient({
   log: ['query', 'info', 'warn', 'error'],
   datasources: {
@@ -63,6 +77,18 @@ const limiter = rateLimit({
     message: 'Too many requests from this IP, please try again later.',
     retryAfter: Math.round(15 * 60 * 1000 / 1000) // seconds
   },
+  
+  // Key generator to handle proxy scenarios
+  keyGenerator: (req) => {
+    // Use X-Forwarded-For header if available, otherwise use IP
+    return req.ip || req.connection.remoteAddress || 'unknown';
+  },
+  
+  // Skip successful requests from rate limiting
+  skipSuccessfulRequests: false,
+  
+  // Skip failed requests from rate limiting
+  skipFailedRequests: false,
   
   standardHeaders: true,
   legacyHeaders: false,
