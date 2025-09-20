@@ -109,14 +109,32 @@ app.use(cors({
     if (!origin) return callback(null, true);
     
     const allowedOrigins = [
+      // Local development
       'http://localhost:3000',
       'http://localhost:3001', 
       'http://localhost:5173',
       'http://localhost:4173',
-      process.env.CORS_ORIGIN
+      // Vercel deployments
+      'https://bhavani-chit-funds.vercel.app',
+      'https://bhavani-chit-funds-git-main.vercel.app',
+      'https://bhavani-chit-funds-git-develop.vercel.app',
+      // Environment variable for custom domains
+      process.env.CORS_ORIGIN,
+      // Wildcard for Vercel preview deployments
+      /^https:\/\/.*\.vercel\.app$/
     ].filter(Boolean);
     
-    if (allowedOrigins.indexOf(origin) !== -1) {
+    // Check if origin matches any allowed origin
+    const isAllowed = allowedOrigins.some(allowedOrigin => {
+      if (typeof allowedOrigin === 'string') {
+        return allowedOrigin === origin;
+      } else if (allowedOrigin instanceof RegExp) {
+        return allowedOrigin.test(origin);
+      }
+      return false;
+    });
+    
+    if (isAllowed) {
       callback(null, true);
     } else {
       console.log('CORS blocked origin:', origin);
@@ -147,17 +165,28 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Handle CORS preflight for auth routes
-app.options('/api/auth/*', (req, res) => {
+// Handle CORS preflight for all API routes
+app.options('/api/*', (req, res) => {
   const origin = req.headers.origin;
   const allowedOrigins = [
+    // Local development
     'http://localhost:3000',
     'http://localhost:3001', 
     'http://localhost:5173',
-    'http://localhost:4173'
-  ];
+    'http://localhost:4173',
+    // Vercel deployments
+    'https://bhavani-chit-funds.vercel.app',
+    'https://bhavani-chit-funds-git-main.vercel.app',
+    'https://bhavani-chit-funds-git-develop.vercel.app',
+    // Environment variable for custom domains
+    process.env.CORS_ORIGIN
+  ].filter(Boolean);
   
-  if (allowedOrigins.includes(origin)) {
+  // Check if origin is allowed (including Vercel preview URLs)
+  const isAllowed = allowedOrigins.includes(origin) || 
+                   (origin && origin.includes('.vercel.app'));
+  
+  if (isAllowed) {
     res.header('Access-Control-Allow-Origin', origin);
   } else {
     res.header('Access-Control-Allow-Origin', '*');
@@ -168,6 +197,41 @@ app.options('/api/auth/*', (req, res) => {
   res.header('Access-Control-Allow-Credentials', 'true');
   res.header('Access-Control-Max-Age', '86400'); // 24 hours
   res.sendStatus(200);
+});
+
+// Global CORS handler for all routes
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  const allowedOrigins = [
+    // Local development
+    'http://localhost:3000',
+    'http://localhost:3001', 
+    'http://localhost:5173',
+    'http://localhost:4173',
+    // Vercel deployments
+    'https://bhavani-chit-funds.vercel.app',
+    'https://bhavani-chit-funds-git-main.vercel.app',
+    'https://bhavani-chit-funds-git-develop.vercel.app',
+    // Environment variable for custom domains
+    process.env.CORS_ORIGIN
+  ].filter(Boolean);
+  
+  // Check if origin is allowed (including Vercel preview URLs)
+  const isAllowed = allowedOrigins.includes(origin) || 
+                   (origin && origin.includes('.vercel.app'));
+  
+  if (isAllowed) {
+    res.header('Access-Control-Allow-Origin', origin);
+  } else if (origin) {
+    res.header('Access-Control-Allow-Origin', '*');
+  }
+  
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  
+  next();
 });
 
 // API routes
