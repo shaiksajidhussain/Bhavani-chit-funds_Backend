@@ -203,8 +203,15 @@ router.post('/', authenticateToken, requireAgentOrAdmin, auctionValidations.crea
         });
       }
 
-      // Check if member belongs to the same scheme
-      if (winningMember.schemeId !== chitSchemeId) {
+      // Check if member belongs to the same scheme through CustomerScheme junction table
+      const customerScheme = await prisma.customerScheme.findFirst({
+        where: {
+          customerId: winningMemberId,
+          schemeId: chitSchemeId
+        }
+      });
+
+      if (!customerScheme) {
         return res.status(400).json({
           success: false,
           message: 'Winning member does not belong to this chit scheme'
@@ -298,7 +305,15 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
         });
       }
 
-      if (winningMember.schemeId !== existingAuction.chitSchemeId) {
+      // Check if member belongs to the same scheme through CustomerScheme junction table
+      const customerScheme = await prisma.customerScheme.findFirst({
+        where: {
+          customerId: updateData.winningMemberId,
+          schemeId: existingAuction.chitSchemeId
+        }
+      });
+
+      if (!customerScheme) {
         return res.status(400).json({
           success: false,
           message: 'Winning member does not belong to this chit scheme'

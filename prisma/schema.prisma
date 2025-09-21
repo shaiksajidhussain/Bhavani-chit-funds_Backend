@@ -56,7 +56,7 @@ model ChitScheme {
   updatedAt       DateTime      @updatedAt
 
   // Relations
-  customers Customer[]
+  customerSchemes CustomerScheme[]
   auctions  Auction[]
   creator   User?   @relation(fields: [createdBy], references: [id])
 
@@ -68,7 +68,6 @@ model Customer {
   name         String
   mobile       String
   address      String
-  schemeId     String
   startDate    DateTime
   lastDate     DateTime?
   amountPerDay Int
@@ -82,12 +81,35 @@ model Customer {
   updatedAt    DateTime      @updatedAt
 
   // Relations
-  scheme       ChitScheme    @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  schemes      CustomerScheme[]
   collections  Collection[]
-  passbookEntries PassbookEntry[]
   wonAuctions Auction[]
 
   @@map("customers")
+}
+
+model CustomerScheme {
+  id           String        @id @default(cuid())
+  customerId   String
+  schemeId     String
+  enrolledAt   DateTime      @default(now())
+  status       CustomerStatus @default(ACTIVE)
+  amountPerDay Int
+  duration     Int
+  durationType DurationType  @default(MONTHS)
+  startDate    DateTime
+  lastDate     DateTime?
+  balance      Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relations
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  scheme       ChitScheme @relation(fields: [schemeId], references: [id], onDelete: Cascade)
+  passbookEntries PassbookEntry[]
+
+  @@unique([customerId, schemeId])
+  @@map("customer_schemes")
 }
 
 model Collection {
@@ -134,12 +156,13 @@ model Auction {
 
 model PassbookEntry {
   id               String            @id @default(cuid())
-  customerId       String
+  customerSchemeId String
   month            Int
   date             DateTime
   dailyPayment     Int
   amount           Int
   chittiAmount     Int
+  chitLiftingAmount Int?
   type             EntryType         @default(MANUAL)
   paymentMethod    PaymentMethod     @default(CASH)
   paymentFrequency PaymentFrequency  @default(DAILY)
@@ -148,7 +171,7 @@ model PassbookEntry {
   updatedAt        DateTime          @updatedAt
 
   // Relations
-  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerScheme CustomerScheme @relation(fields: [customerSchemeId], references: [id], onDelete: Cascade)
 
   @@map("passbook_entries")
 }

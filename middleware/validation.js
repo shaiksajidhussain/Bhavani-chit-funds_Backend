@@ -268,11 +268,18 @@ const auctionValidations = {
 const passbookValidations = {
   create: [
     body('customerId').isString().notEmpty().withMessage('Valid customer ID is required'),
-    body('month').isInt({ min: 1, max: 12 }).withMessage('Month must be between 1 and 12'),
+   
     body('date').isISO8601().withMessage('Valid date is required'),
     body('dailyPayment').isInt({ min: 0 }).withMessage('Daily payment must be non-negative'),
-    body('amount').isInt({ min: 0 }).withMessage('Amount must be non-negative'),
+    
     body('chittiAmount').isInt({ min: 0 }).withMessage('Chitti amount must be non-negative'),
+    body('chitLiftingAmount').optional().custom((value) => {
+      if (value === null || value === undefined || value === '') {
+        return true; // Allow null, undefined, or empty string
+      }
+      const num = parseInt(value);
+      return !isNaN(num) && num >= 0;
+    }).withMessage('Chit lifting amount must be non-negative'),
     body('type').optional().isIn(['GENERATED', 'MANUAL']).withMessage('Invalid entry type'),
     body('paymentMethod').optional().isIn(['CASH', 'BANK_TRANSFER', 'UPI', 'CHEQUE', 'NOT_PAID']).withMessage('Invalid payment method'),
     body('paymentFrequency').optional().isIn(['DAILY', 'MONTHLY']).withMessage('Invalid payment frequency'),

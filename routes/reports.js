@@ -101,7 +101,11 @@ router.get('/revenue', authenticateToken, async (req, res) => {
 
     if (schemeId) {
       where.customer = {
-        schemeId: schemeId
+        schemes: {
+          some: {
+            schemeId: schemeId
+          }
+        }
       };
     }
 
@@ -113,10 +117,14 @@ router.get('/revenue', authenticateToken, async (req, res) => {
           select: {
             id: true,
             name: true,
-            scheme: {
-              select: {
-                id: true,
-                name: true
+            schemes: {
+              include: {
+                scheme: {
+                  select: {
+                    id: true,
+                    name: true
+                  }
+                }
               }
             }
           }
@@ -154,13 +162,15 @@ router.get('/revenue', authenticateToken, async (req, res) => {
       groupedData[key].totalRevenue += collection.amountPaid;
       groupedData[key].totalCollections += 1;
 
-      // Group by scheme
-      const schemeName = collection.customer.scheme.name;
-      if (!groupedData[key].byScheme[schemeName]) {
-        groupedData[key].byScheme[schemeName] = { amount: 0, count: 0 };
-      }
-      groupedData[key].byScheme[schemeName].amount += collection.amountPaid;
-      groupedData[key].byScheme[schemeName].count += 1;
+      // Group by scheme (handle multiple schemes per customer)
+      collection.customer.schemes.forEach(customerScheme => {
+        const schemeName = customerScheme.scheme.name;
+        if (!groupedData[key].byScheme[schemeName]) {
+          groupedData[key].byScheme[schemeName] = { amount: 0, count: 0 };
+        }
+        groupedData[key].byScheme[schemeName].amount += collection.amountPaid;
+        groupedData[key].byScheme[schemeName].count += 1;
+      });
 
       // Group by payment method
       const paymentMethod = collection.paymentMethod;
@@ -199,20 +209,30 @@ router.get('/customers/performance', authenticateToken, async (req, res) => {
 
     // Build where clause
     const where = {};
-    if (schemeId) where.schemeId = schemeId;
+    if (schemeId) {
+      where.schemes = {
+        some: {
+          schemeId: schemeId
+        }
+      };
+    }
     if (status) where.status = status;
 
     const customers = await prisma.customer.findMany({
       where,
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         },
         collections: {
@@ -251,7 +271,7 @@ router.get('/customers/performance', authenticateToken, async (req, res) => {
           status: customer.status,
           startDate: customer.startDate
         },
-        scheme: customer.scheme,
+        schemes: customer.schemes.map(cs => cs.scheme),
         performance: {
           totalPaid,
           remainingBalance,
@@ -300,13 +320,17 @@ router.get('/schemes/performance', authenticateToken, async (req, res) => {
     const schemes = await prisma.chitScheme.findMany({
       where,
       include: {
-        customers: {
-          select: {
-            id: true,
-            status: true,
-            balance: true,
-            amountPerDay: true,
-            startDate: true
+        customerSchemes: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                status: true,
+                balance: true,
+                amountPerDay: true,
+                startDate: true
+              }
+            }
           }
         },
         auctions: {
@@ -320,7 +344,7 @@ router.get('/schemes/performance', authenticateToken, async (req, res) => {
         },
         _count: {
           select: {
-            customers: true,
+            customerSchemes: true,
             auctions: true
           }
         }
@@ -329,12 +353,13 @@ router.get('/schemes/performance', authenticateToken, async (req, res) => {
 
     // Calculate performance metrics
     const performanceData = schemes.map(scheme => {
-      const activeCustomers = scheme.customers.filter(c => c.status === 'ACTIVE').length;
-      const completedCustomers = scheme.customers.filter(c => c.status === 'COMPLETED').length;
-      const defaultedCustomers = scheme.customers.filter(c => c.status === 'DEFAULTED').length;
+      const customers = scheme.customerSchemes.map(cs => cs.customer);
+      const activeCustomers = customers.filter(c => c.status === 'ACTIVE').length;
+      const completedCustomers = customers.filter(c => c.status === 'COMPLETED').length;
+      const defaultedCustomers = customers.filter(c => c.status === 'DEFAULTED').length;
       
-      const totalBalance = scheme.customers.reduce((sum, c) => sum + c.balance, 0);
-      const totalExpected = scheme.customers.reduce((sum, c) => sum + (c.amountPerDay * scheme.duration), 0);
+      const totalBalance = customers.reduce((sum, c) => sum + c.balance, 0);
+      const totalExpected = customers.reduce((sum, c) => sum + (c.amountPerDay * scheme.duration), 0);
       const totalCollected = totalExpected - totalBalance;
       const collectionRate = totalExpected > 0 ? Math.round((totalCollected / totalExpected) * 100) : 0;
       
@@ -359,11 +384,11 @@ router.get('/schemes/performance', authenticateToken, async (req, res) => {
           endDate: scheme.endDate
         },
         performance: {
-          totalMembers: scheme._count.customers,
+          totalMembers: scheme._count.customerSchemes,
           activeMembers: activeCustomers,
           completedMembers: completedCustomers,
           defaultedMembers: defaultedCustomers,
-          enrollmentRate: scheme.numberOfMembers > 0 ? Math.round((scheme._count.customers / scheme.numberOfMembers) * 100) : 0,
+          enrollmentRate: scheme.numberOfMembers > 0 ? Math.round((scheme._count.customerSchemes / scheme.numberOfMembers) * 100) : 0,
           totalBalance,
           totalCollected,
           collectionRate,
@@ -430,11 +455,15 @@ router.get('/collections/efficiency', authenticateToken, async (req, res) => {
           select: {
             id: true,
             name: true,
-            scheme: {
-              select: {
-                id: true,
-                name: true,
-                dailyPayment: true
+            schemes: {
+              include: {
+                scheme: {
+                  select: {
+                    id: true,
+                    name: true,
+                    dailyPayment: true
+                  }
+                }
               }
             }
           }
@@ -754,7 +783,7 @@ router.get('/scheme-performance', authenticateToken, async (req, res) => {
         status: true,
         _count: {
           select: {
-            customers: true
+            customerSchemes: true
           }
         }
       }
@@ -762,11 +791,15 @@ router.get('/scheme-performance', authenticateToken, async (req, res) => {
 
     const schemePerformance = await Promise.all(
       schemes.map(async (scheme) => {
-        // Get total collections for this scheme
+        // Get total collections for this scheme through CustomerScheme
         const totalCollections = await prisma.collection.aggregate({
           where: {
             customer: {
-              schemeId: scheme.id
+              schemes: {
+                some: {
+                  schemeId: scheme.id
+                }
+              }
             }
           },
           _sum: { amountPaid: true }
@@ -780,7 +813,7 @@ router.get('/scheme-performance', authenticateToken, async (req, res) => {
           id: scheme.id,
           scheme: scheme.name,
           members: scheme.numberOfMembers,
-          enrolled: scheme._count.customers,
+          enrolled: scheme._count.customerSchemes,
           collection: parseFloat(collectionRate),
           status: scheme.status
         };

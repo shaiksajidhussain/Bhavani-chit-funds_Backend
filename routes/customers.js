@@ -30,7 +30,11 @@ router.get('/', authenticateToken, async (req, res) => {
     }
     
     if (schemeId) {
-      where.schemeId = schemeId;
+      where.schemes = {
+        some: {
+          schemeId: schemeId
+        }
+      };
     }
     
     if (search) {
@@ -51,20 +55,23 @@ router.get('/', authenticateToken, async (req, res) => {
       take,
       orderBy: { [sortBy]: sortOrder },
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         },
         _count: {
           select: {
-            collections: true,
-            passbookEntries: true
+            collections: true
           }
         }
       }
@@ -100,15 +107,19 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
     const customer = await prisma.customer.findUnique({
       where: { id },
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true,
-            status: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true,
+                status: true
+              }
+            }
           }
         },
         collections: {
@@ -128,23 +139,9 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
           orderBy: { date: 'desc' },
           take: 10
         },
-        passbookEntries: {
-          select: {
-            id: true,
-            month: true,
-            date: true,
-            dailyPayment: true,
-            amount: true,
-            chittiAmount: true,
-            type: true
-          },
-          orderBy: { date: 'desc' },
-          take: 20
-        },
         _count: {
           select: {
-            collections: true,
-            passbookEntries: true
+            collections: true
           }
         }
       }
@@ -218,7 +215,6 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
         name,
         mobile,
         address,
-        schemeId,
         startDate: new Date(startDate),
         lastDate: lastDate ? new Date(lastDate) : null,
         amountPerDay,
@@ -227,17 +223,32 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
         photo,
         status,
         documents,
-        balance
+        balance,
+        schemes: {
+          create: {
+            schemeId,
+            amountPerDay,
+            duration,
+            durationType,
+            startDate: new Date(startDate),
+            lastDate: lastDate ? new Date(lastDate) : null,
+            balance
+          }
+        }
       },
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         }
       }
@@ -298,45 +309,9 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       });
     }
 
-    // If changing scheme, verify new scheme exists and has capacity
-    if (updateData.schemeId && updateData.schemeId !== existingCustomer.schemeId) {
-      const newScheme = await prisma.chitScheme.findUnique({
-        where: { id: updateData.schemeId }
-      });
-
-      if (!newScheme) {
-        return res.status(400).json({
-          success: false,
-          message: 'New chit scheme not found'
-        });
-      }
-
-      if (newScheme.membersEnrolled >= newScheme.numberOfMembers) {
-        return res.status(400).json({
-          success: false,
-          message: 'New chit scheme is full'
-        });
-      }
-
-      // Update old scheme count
-      await prisma.chitScheme.update({
-        where: { id: existingCustomer.schemeId },
-        data: {
-          membersEnrolled: {
-            decrement: 1
-          }
-        }
-      });
-
-      // Update new scheme count
-      await prisma.chitScheme.update({
-        where: { id: updateData.schemeId },
-        data: {
-          membersEnrolled: {
-            increment: 1
-          }
-        }
-      });
+    // Remove schemeId from updateData as it's no longer a direct field
+    if (updateData.schemeId) {
+      delete updateData.schemeId;
     }
 
     // Convert date strings to Date objects
@@ -371,14 +346,18 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       where: { id },
       data: cleanUpdateData,
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         }
       }
@@ -408,10 +387,24 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
     const existingCustomer = await prisma.customer.findUnique({
       where: { id },
       include: {
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true
+              }
+            },
+            _count: {
+              select: {
+                passbookEntries: true
+              }
+            }
+          }
+        },
         _count: {
           select: {
-            collections: true,
-            passbookEntries: true
+            collections: true
           }
         }
       }
@@ -424,28 +417,46 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
       });
     }
 
-    // Check if customer has collections or passbook entries
-    if (existingCustomer._count.collections > 0 || existingCustomer._count.passbookEntries > 0) {
+    // Check if customer has collections
+    if (existingCustomer._count.collections > 0) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot delete customer with existing collections or passbook entries'
+        message: 'Cannot delete customer with existing collections'
       });
     }
 
-    // Delete customer
+    // Check if customer has passbook entries through their schemes
+    const hasPassbookEntries = existingCustomer.schemes.some(customerScheme => 
+      customerScheme._count && customerScheme._count.passbookEntries > 0
+    );
+    
+    if (hasPassbookEntries) {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot delete customer with existing passbook entries'
+      });
+    }
+
+    // Delete customer (this will cascade delete all CustomerScheme relationships)
     await prisma.customer.delete({
       where: { id }
     });
 
-    // Update scheme members enrolled count
-    await prisma.chitScheme.update({
-      where: { id: existingCustomer.schemeId },
-      data: {
-        membersEnrolled: {
-          decrement: 1
-        }
-      }
-    });
+    // Update scheme members enrolled count for all schemes the customer was enrolled in
+    if (existingCustomer.schemes && existingCustomer.schemes.length > 0) {
+      await Promise.all(
+        existingCustomer.schemes.map(customerScheme =>
+          prisma.chitScheme.update({
+            where: { id: customerScheme.schemeId },
+            data: {
+              membersEnrolled: {
+                decrement: 1
+              }
+            }
+          })
+        )
+      );
+    }
 
     res.json({
       success: true,
@@ -467,7 +478,13 @@ router.get('/stats/overview', authenticateToken, async (req, res) => {
     const { schemeId } = req.query;
 
     const where = {};
-    if (schemeId) where.schemeId = schemeId;
+    if (schemeId) {
+      where.schemes = {
+        some: {
+          schemeId: schemeId
+        }
+      };
+    }
 
     const [
       totalCustomers,
@@ -510,6 +527,86 @@ router.get('/stats/overview', authenticateToken, async (req, res) => {
       success: false,
       message: 'Failed to fetch customer statistics',
       error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Get all schemes for a specific customer
+router.get('/:id/schemes', authenticateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Verify customer exists and get their schemes
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true,
+                monthlyPayment: true,
+                paymentType: true,
+                status: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    // Format the response to match the expected structure
+    const schemes = customer.schemes.map(customerScheme => ({
+      id: customerScheme.scheme.id,
+      name: customerScheme.scheme.name,
+      chitValue: customerScheme.scheme.chitValue,
+      duration: customerScheme.scheme.duration,
+      durationType: customerScheme.scheme.durationType,
+      dailyPayment: customerScheme.scheme.dailyPayment,
+      monthlyPayment: customerScheme.scheme.monthlyPayment,
+      paymentType: customerScheme.scheme.paymentType,
+      status: customerScheme.scheme.status,
+      // Include customer-specific scheme data
+      customerSchemeId: customerScheme.id,
+      enrolledAt: customerScheme.enrolledAt,
+      amountPerDay: customerScheme.amountPerDay,
+      duration: customerScheme.duration,
+      durationType: customerScheme.durationType,
+      startDate: customerScheme.startDate,
+      lastDate: customerScheme.lastDate,
+      balance: customerScheme.balance
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        customer: {
+          id: customer.id,
+          name: customer.name
+        },
+        schemes
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching customer schemes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error'
     });
   }
 });

@@ -47,7 +47,7 @@ router.get('/', authenticateToken, async (req, res) => {
       include: {
         _count: {
           select: {
-            customers: true,
+            customerSchemes: true,
             auctions: true
           }
         }
@@ -84,15 +84,18 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
     const scheme = await prisma.chitScheme.findUnique({
       where: { id },
       include: {
-        customers: {
-          select: {
-            id: true,
-            name: true,
-            mobile: true,
-            status: true,
-            startDate: true,
-            balance: true
-          }
+        customerSchemes: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true,
+                status: true
+              }
+            }
+          },
+          orderBy: { createdAt: 'desc' }
         },
         auctions: {
           select: {
@@ -111,7 +114,7 @@ router.get('/:id', authenticateToken, commonValidations.id, handleValidationErro
         },
         _count: {
           select: {
-            customers: true,
+            customerSchemes: true,
             auctions: true
           }
         }
@@ -289,7 +292,7 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
       include: {
         _count: {
           select: {
-            customers: true,
+            customerSchemes: true,
             auctions: true
           }
         }
@@ -304,7 +307,7 @@ router.delete('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.
     }
 
     // Check if scheme has customers or auctions
-    if (existingScheme._count.customers > 0 || existingScheme._count.auctions > 0) {
+    if (existingScheme._count.customerSchemes > 0 || existingScheme._count.auctions > 0) {
       return res.status(400).json({
         success: false,
         message: 'Cannot delete chit scheme with existing customers or auctions'
@@ -374,51 +377,59 @@ router.get('/:id/members', authenticateToken, commonValidations.id, handleValida
     }
 
     // Get total count
-    const totalCount = await prisma.customer.count({ where });
+    const totalCount = await prisma.customerScheme.count({ where });
 
-    // Get customers
-    const customers = await prisma.customer.findMany({
+    // Get customer schemes
+    const customerSchemes = await prisma.customerScheme.findMany({
       where,
       skip,
       take,
       orderBy: { [sortBy]: sortOrder },
-      select: {
-        id: true,
-        name: true,
-        mobile: true,
-        address: true,
-        status: true,
-        startDate: true,
-        lastDate: true,
-        amountPerDay: true,
-        duration: true,
-        durationType: true,
-        balance: true,
-        photo: true,
-        createdAt: true,
-        _count: {
+      include: {
+        customer: {
           select: {
-            collections: true,
-            passbookEntries: true
+            id: true,
+            name: true,
+            mobile: true,
+            address: true,
+            photo: true,
+            createdAt: true,
+            _count: {
+              select: {
+                collections: true
+              }
+            }
           }
         }
       }
     });
 
     // Calculate member statistics
-    const allCustomers = await prisma.customer.findMany({
+    const allCustomerSchemes = await prisma.customerScheme.findMany({
       where: { schemeId: id },
-      select: { status: true, balance: true, amountPerDay: true }
+      select: { status: true, balance: true, amountPerDay: true, duration: true }
     });
 
     const stats = {
-      totalMembers: allCustomers.length,
-      activeMembers: allCustomers.filter(c => c.status === 'ACTIVE').length,
-      completedMembers: allCustomers.filter(c => c.status === 'COMPLETED').length,
-      defaultedMembers: allCustomers.filter(c => c.status === 'DEFAULTED').length,
-      totalBalance: allCustomers.reduce((sum, c) => sum + c.balance, 0),
-      totalAmountPaid: allCustomers.reduce((sum, c) => sum + (c.amountPerDay * c.duration - c.balance), 0)
+      totalMembers: allCustomerSchemes.length,
+      activeMembers: allCustomerSchemes.filter(cs => cs.status === 'ACTIVE').length,
+      completedMembers: allCustomerSchemes.filter(cs => cs.status === 'COMPLETED').length,
+      defaultedMembers: allCustomerSchemes.filter(cs => cs.status === 'DEFAULTED').length,
+      totalBalance: allCustomerSchemes.reduce((sum, cs) => sum + cs.balance, 0),
+      totalAmountPaid: allCustomerSchemes.reduce((sum, cs) => sum + (cs.amountPerDay * cs.duration - cs.balance), 0)
     };
+
+    // Format the response to match the expected structure
+    const members = customerSchemes.map(cs => ({
+      ...cs.customer,
+      status: cs.status,
+      startDate: cs.startDate,
+      lastDate: cs.lastDate,
+      amountPerDay: cs.amountPerDay,
+      duration: cs.duration,
+      durationType: cs.durationType,
+      balance: cs.balance
+    }));
 
     res.json({
       success: true,
@@ -427,7 +438,7 @@ router.get('/:id/members', authenticateToken, commonValidations.id, handleValida
           id: scheme.id,
           name: scheme.name
         },
-        members: customers,
+        members: members,
         stats,
         pagination: {
           page: parseInt(page),
@@ -447,6 +458,123 @@ router.get('/:id/members', authenticateToken, commonValidations.id, handleValida
   }
 });
 
+// Add existing customer to scheme
+router.post('/:id/members', authenticateToken, requireAgentOrAdmin, commonValidations.id, handleValidationErrors, async (req, res) => {
+  try {
+    const { id: schemeId } = req.params;
+    const { customerId, amountPerDay, duration, durationType = 'MONTHS', startDate, lastDate } = req.body;
+
+    // Verify scheme exists
+    const scheme = await prisma.chitScheme.findUnique({
+      where: { id: schemeId }
+    });
+
+    if (!scheme) {
+      return res.status(404).json({
+        success: false,
+        message: 'Chit scheme not found'
+      });
+    }
+
+    // Check if scheme has capacity
+    if (scheme.membersEnrolled >= scheme.numberOfMembers) {
+      return res.status(400).json({
+        success: false,
+        message: 'Chit scheme is full'
+      });
+    }
+
+    // Verify customer exists
+    const customer = await prisma.customer.findUnique({
+      where: { id: customerId }
+    });
+
+    if (!customer) {
+      return res.status(404).json({
+        success: false,
+        message: 'Customer not found'
+      });
+    }
+
+    // Check if customer is already in this scheme
+    const existingCustomerScheme = await prisma.customerScheme.findFirst({
+      where: {
+        customerId,
+        schemeId
+      }
+    });
+
+    if (existingCustomerScheme) {
+      return res.status(400).json({
+        success: false,
+        message: 'Customer is already enrolled in this scheme'
+      });
+    }
+
+    // Calculate initial balance
+    const totalAmount = amountPerDay * duration;
+    const balance = totalAmount;
+
+    // Create customer scheme relationship
+    const customerScheme = await prisma.customerScheme.create({
+      data: {
+        customerId,
+        schemeId,
+        amountPerDay,
+        duration,
+        durationType,
+        startDate: startDate ? new Date(startDate) : customer.startDate,
+        lastDate: lastDate ? new Date(lastDate) : null,
+        balance
+      },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            mobile: true,
+            address: true,
+            status: true
+          }
+        },
+        scheme: {
+          select: {
+            id: true,
+            name: true,
+            chitValue: true,
+            duration: true,
+            durationType: true,
+            dailyPayment: true
+          }
+        }
+      }
+    });
+
+    // Update scheme members enrolled count
+    await prisma.chitScheme.update({
+      where: { id: schemeId },
+      data: {
+        membersEnrolled: {
+          increment: 1
+        }
+      }
+    });
+
+    res.status(201).json({
+      success: true,
+      message: 'Customer added to scheme successfully',
+      data: { customerScheme }
+    });
+  } catch (error) {
+    console.error('Add customer to scheme error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add customer to scheme',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
 // Get scheme statistics
 router.get('/:id/stats', authenticateToken, commonValidations.id, handleValidationErrors, async (req, res) => {
   try {
@@ -455,7 +583,7 @@ router.get('/:id/stats', authenticateToken, commonValidations.id, handleValidati
     const scheme = await prisma.chitScheme.findUnique({
       where: { id },
       include: {
-        customers: {
+        customerSchemes: {
           select: {
             status: true,
             balance: true,
@@ -480,12 +608,12 @@ router.get('/:id/stats', authenticateToken, commonValidations.id, handleValidati
     }
 
     const stats = {
-      totalMembers: scheme.customers.length,
-      activeMembers: scheme.customers.filter(c => c.status === 'ACTIVE').length,
-      completedMembers: scheme.customers.filter(c => c.status === 'COMPLETED').length,
-      defaultedMembers: scheme.customers.filter(c => c.status === 'DEFAULTED').length,
-      totalBalance: scheme.customers.reduce((sum, c) => sum + c.balance, 0),
-      totalCollected: scheme.customers.reduce((sum, c) => sum + (c.amountPerDay * scheme.duration - c.balance), 0),
+      totalMembers: scheme.customerSchemes.length,
+      activeMembers: scheme.customerSchemes.filter(cs => cs.status === 'ACTIVE').length,
+      completedMembers: scheme.customerSchemes.filter(cs => cs.status === 'COMPLETED').length,
+      defaultedMembers: scheme.customerSchemes.filter(cs => cs.status === 'DEFAULTED').length,
+      totalBalance: scheme.customerSchemes.reduce((sum, cs) => sum + cs.balance, 0),
+      totalCollected: scheme.customerSchemes.reduce((sum, cs) => sum + (cs.amountPerDay * scheme.duration - cs.balance), 0),
       totalAuctions: scheme.auctions.length,
       completedAuctions: scheme.auctions.filter(a => a.status === 'COMPLETED').length,
       totalAmountReceived: scheme.auctions

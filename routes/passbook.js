@@ -16,6 +16,7 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
       type,
       month,
       year,
+      schemeId,
       sortBy = 'date',
       sortOrder = 'desc'
     } = req.query;
@@ -27,14 +28,18 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         }
       }
@@ -47,8 +52,24 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
       });
     }
 
-    // Build where clause
-    const where = { customerId };
+    // Build where clause for customer schemes
+    const where = {};
+    
+    // If schemeId is provided, filter by specific scheme
+    if (schemeId) {
+      const customerScheme = customer.schemes.find(cs => cs.schemeId === schemeId);
+      if (!customerScheme) {
+        return res.status(400).json({
+          success: false,
+          message: 'Customer is not enrolled in the specified scheme'
+        });
+      }
+      where.customerSchemeId = customerScheme.id;
+    } else {
+      // Get all customer scheme IDs
+      const customerSchemeIds = customer.schemes.map(cs => cs.id);
+      where.customerSchemeId = { in: customerSchemeIds };
+    }
     
     if (type) {
       where.type = type;
@@ -67,6 +88,7 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
       };
     }
 
+
     // Get total count
     const totalCount = await prisma.passbookEntry.count({ where });
 
@@ -77,12 +99,23 @@ router.get('/customer/:customerId', authenticateToken, async (req, res) => {
       take,
       orderBy: { [sortBy]: sortOrder },
       include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            mobile: true,
-            status: true
+        customerScheme: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true,
+                status: true
+              }
+            },
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true
+              }
+            }
           }
         }
       }
@@ -121,29 +154,38 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
       dailyPayment,
       amount,
       chittiAmount,
+      chitLiftingAmount,
       type = 'MANUAL',
       paymentMethod = 'CASH',
       paymentFrequency = 'DAILY',
-      chitLifting = 'NO'
+      chitLifting = 'NO',
+      schemeId
     } = req.body;
 
-    // Verify customer exists
-    const customer = await prisma.customer.findUnique({
-      where: { id: customerId }
+    // Find the customer scheme relationship
+    const customerScheme = await prisma.customerScheme.findFirst({
+      where: {
+        customerId,
+        schemeId
+      },
+      include: {
+        customer: true,
+        scheme: true
+      }
     });
 
-    if (!customer) {
+    if (!customerScheme) {
       return res.status(400).json({
         success: false,
-        message: 'Customer not found'
+        message: 'Customer is not enrolled in the specified scheme'
       });
     }
 
     // Check if entry already exists for this month
     const existingEntry = await prisma.passbookEntry.findFirst({
       where: {
-        customerId,
-        month: parseInt(month),
+        customerSchemeId: customerScheme.id,
+        month: month ? parseInt(month) : new Date(date).getMonth() + 1,
         type: 'MANUAL'
       }
     });
@@ -157,24 +199,38 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
 
     const entry = await prisma.passbookEntry.create({
       data: {
-        customerId,
-        month: parseInt(month),
+        customerScheme: {
+          connect: { id: customerScheme.id }
+        },
+        month: month ? parseInt(month) : new Date(date).getMonth() + 1,
         date: new Date(date),
         dailyPayment,
-        amount,
+        amount: amount || dailyPayment, // Use dailyPayment if amount is null/empty
         chittiAmount,
+        chitLiftingAmount: chitLiftingAmount || null,
         type,
         paymentMethod,
         paymentFrequency,
         chitLifting
       },
       include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            mobile: true,
-            status: true
+        customerScheme: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true,
+                status: true
+              }
+            },
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true
+              }
+            }
           }
         }
       }
@@ -199,11 +255,19 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
 router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id, handleValidationErrors, async (req, res) => {
   try {
     const { id } = req.params;
-    const updateData = req.body;
+    const { schemeId, ...updateData } = req.body; // Remove schemeId from updateData
 
     // Check if entry exists
     const existingEntry = await prisma.passbookEntry.findUnique({
-      where: { id }
+      where: { id },
+      include: {
+        customerScheme: {
+          include: {
+            customer: true,
+            scheme: true
+          }
+        }
+      }
     });
 
     if (!existingEntry) {
@@ -221,16 +285,50 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
       });
     }
 
+    // If schemeId is provided and different from current scheme, find the new customerScheme
+    let customerSchemeId = existingEntry.customerSchemeId;
+    if (schemeId && schemeId !== existingEntry.customerScheme.schemeId) {
+      const newCustomerScheme = await prisma.customerScheme.findFirst({
+        where: {
+          customerId: existingEntry.customerScheme.customerId,
+          schemeId: schemeId
+        }
+      });
+      
+      if (!newCustomerScheme) {
+        return res.status(400).json({
+          success: false,
+          message: 'Customer is not enrolled in the specified scheme'
+        });
+      }
+      
+      customerSchemeId = newCustomerScheme.id;
+    }
+
     const updatedEntry = await prisma.passbookEntry.update({
       where: { id },
-      data: updateData,
+      data: {
+        ...updateData,
+        ...(customerSchemeId !== existingEntry.customerSchemeId && { customerSchemeId })
+      },
       include: {
-        customer: {
-          select: {
-            id: true,
-            name: true,
-            mobile: true,
-            status: true
+        customerScheme: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true,
+                status: true
+              }
+            },
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true
+              }
+            }
           }
         }
       }
@@ -303,14 +401,18 @@ router.get('/customer/:customerId/summary', authenticateToken, async (req, res) 
     const customer = await prisma.customer.findUnique({
       where: { id: customerId },
       include: {
-        scheme: {
-          select: {
-            id: true,
-            name: true,
-            chitValue: true,
-            duration: true,
-            durationType: true,
-            dailyPayment: true
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                duration: true,
+                durationType: true,
+                dailyPayment: true
+              }
+            }
           }
         }
       }
