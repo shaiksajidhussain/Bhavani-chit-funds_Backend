@@ -173,8 +173,8 @@ router.post('/', authenticateToken, requireAgentOrAdmin, auctionValidations.crea
     } = req.body;
 
     // Clean up empty strings for integer fields - convert to null
-    const cleanedAmountReceived = amountReceived === '' ? null : (typeof amountReceived === 'string' ? parseInt(amountReceived) : amountReceived);
-    const cleanedDiscountAmount = discountAmount === '' ? null : (typeof discountAmount === 'string' ? parseInt(discountAmount) : discountAmount);
+    const cleanedAmountReceived = amountReceived === '' ? 0 : (typeof amountReceived === 'string' ? parseInt(amountReceived) : amountReceived); // amountReceived cannot be null
+    const cleanedDiscountAmount = discountAmount === '' ? 0 : (typeof discountAmount === 'string' ? parseInt(discountAmount) : discountAmount); // discountAmount cannot be null
     const cleanedNewDailyPayment = newDailyPayment === '' ? null : (typeof newDailyPayment === 'string' ? parseInt(newDailyPayment) : newDailyPayment);
     const cleanedPreviousDailyPayment = previousDailyPayment === '' ? null : (typeof previousDailyPayment === 'string' ? parseInt(previousDailyPayment) : previousDailyPayment);
 
@@ -327,12 +327,26 @@ router.put('/:id', authenticateToken, requireAgentOrAdmin, commonValidations.id,
     // Clean up empty strings for integer fields - convert to null
     const cleanedUpdateData = { ...allowedUpdateData };
     
+    // Handle winningMemberId separately - convert to winningMember relation
+    if (cleanedUpdateData.winningMemberId !== undefined) {
+      if (cleanedUpdateData.winningMemberId) {
+        cleanedUpdateData.winningMember = {
+          connect: { id: cleanedUpdateData.winningMemberId }
+        };
+      } else {
+        cleanedUpdateData.winningMember = {
+          disconnect: true
+        };
+      }
+      delete cleanedUpdateData.winningMemberId;
+    }
+    
     // Convert empty strings to null for optional integer fields
     if (cleanedUpdateData.amountReceived === '') {
-      cleanedUpdateData.amountReceived = null;
+      cleanedUpdateData.amountReceived = 0; // amountReceived cannot be null, use 0 as default
     }
     if (cleanedUpdateData.discountAmount === '') {
-      cleanedUpdateData.discountAmount = null;
+      cleanedUpdateData.discountAmount = 0; // discountAmount cannot be null, use 0 as default
     }
     if (cleanedUpdateData.newDailyPayment === '') {
       cleanedUpdateData.newDailyPayment = null;

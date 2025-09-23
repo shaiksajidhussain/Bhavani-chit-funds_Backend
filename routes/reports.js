@@ -588,6 +588,364 @@ router.get('/daily', authenticateToken, async (req, res) => {
   }
 });
 
+// Get passbook statistics for profit calculations
+router.get('/passbook-stats', authenticateToken, async (req, res) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date ? new Date(date) : new Date();
+    
+    // Get start and end of the target date
+    const startOfDay = new Date(targetDate);
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(targetDate);
+    endOfDay.setHours(23, 59, 59, 999);
+
+    // Get all active customers with their schemes
+    const activeCustomers = await prisma.customer.findMany({
+      where: { status: 'ACTIVE' },
+      include: {
+        schemes: {
+          include: {
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                chitValue: true,
+                commissionRate: true,
+                dailyPayment: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Get actual passbook entries for today and yesterday (to catch any timezone issues)
+    const yesterday = new Date(targetDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const startOfYesterday = new Date(yesterday);
+    startOfYesterday.setHours(0, 0, 0, 0);
+    const endOfYesterday = new Date(yesterday);
+    endOfYesterday.setHours(23, 59, 59, 999);
+
+    const todayPassbookEntries = await prisma.passbookEntry.findMany({
+      where: {
+        OR: [
+          {
+            date: {
+              gte: startOfDay,
+              lte: endOfDay
+            }
+          },
+          {
+            date: {
+              gte: startOfYesterday,
+              lte: endOfYesterday
+            }
+          }
+        ]
+        // Include both GENERATED and MANUAL entries
+      },
+      include: {
+        customerScheme: {
+          include: {
+            customer: {
+              select: {
+                id: true,
+                name: true,
+                mobile: true
+              }
+            },
+            scheme: {
+              select: {
+                id: true,
+                name: true,
+                commissionRate: true
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Debug logging
+    console.log('Active customers found:', activeCustomers.length);
+    console.log('Today passbook entries found:', todayPassbookEntries.length);
+    console.log('Looking for entries between:', startOfDay.toISOString(), 'and', endOfDay.toISOString());
+    console.log('Also looking for entries between:', startOfYesterday.toISOString(), 'and', endOfYesterday.toISOString());
+    
+    // Log each passbook entry found
+    todayPassbookEntries.forEach((entry, index) => {
+      console.log(`Entry ${index + 1}:`, {
+        id: entry.id,
+        date: entry.date.toISOString(),
+        dailyPayment: entry.dailyPayment,
+        amount: entry.amount,
+        customerId: entry.customerScheme.customer.id,
+        customerName: entry.customerScheme.customer.name,
+        schemeId: entry.customerScheme.scheme.id,
+        schemeName: entry.customerScheme.scheme.name,
+        note: `Using amount (${entry.amount}) for calculations, not dailyPayment (${entry.dailyPayment})`
+      });
+    });
+    
+    // Calculate expected vs actual payments
+    let totalExpectedDaily = 0;
+    let totalActualDaily = 0;
+    let totalDailyProfits = 0;
+    let totalMonthlyProfits = 0;
+    let backlogs = [];
+    let paidCustomers = [];
+    let pendingCustomers = [];
+
+    // Process each active customer
+    activeCustomers.forEach(customer => {
+      console.log(`\nProcessing customer: ${customer.name} (ID: ${customer.id})`);
+      customer.schemes.forEach(customerScheme => {
+        const scheme = customerScheme.scheme;
+        const expectedDaily = scheme.dailyPayment || 0;
+        const commissionRate = scheme.commissionRate || 0.05;
+        
+        console.log(`  - Scheme: ${scheme.name} (ID: ${scheme.id}), Expected Daily: ${expectedDaily}`);
+        
+        // Find actual payment for this customer and scheme today
+        const actualEntry = todayPassbookEntries.find(entry => 
+          entry.customerScheme.customer.id === customer.id && entry.customerScheme.scheme.id === scheme.id
+        );
+        
+        const actualDaily = actualEntry ? actualEntry.amount : 0;
+        const backlog = expectedDaily - actualDaily;
+        
+        console.log(`    - Found entry: ${actualEntry ? 'YES' : 'NO'}, Actual Daily: ${actualDaily}, Backlog: ${backlog}`);
+        if (actualEntry) {
+          console.log(`    - Entry details: Date: ${actualEntry.date.toISOString()}, DailyPayment: ${actualEntry.dailyPayment}, Amount: ${actualEntry.amount}, Using Amount for calculation: ${actualDaily}`);
+        }
+        
+        // Add to totals
+        totalExpectedDaily += expectedDaily;
+        totalActualDaily += actualDaily;
+        
+        // Calculate profits on actual payments
+        const dailyProfit = actualDaily * commissionRate;
+        totalDailyProfits += dailyProfit;
+        
+        // Track backlogs
+        if (backlog > 0) {
+          backlogs.push({
+            customerId: customer.id,
+            customerName: customer.name,
+            customerMobile: customer.mobile,
+            schemeId: scheme.id,
+            schemeName: scheme.name,
+            expectedAmount: expectedDaily,
+            actualAmount: actualDaily,
+            backlogAmount: backlog,
+            commissionRate: commissionRate
+          });
+        }
+        
+        // Track paid customers
+        if (actualDaily > 0) {
+          paidCustomers.push({
+            customerId: customer.id,
+            customerName: customer.name,
+            customerMobile: customer.mobile,
+            schemeId: scheme.id,
+            schemeName: scheme.name,
+            expectedAmount: expectedDaily,
+            actualAmount: actualDaily,
+            commissionRate: commissionRate
+          });
+        } else {
+          pendingCustomers.push({
+            customerId: customer.id,
+            customerName: customer.name,
+            customerMobile: customer.mobile,
+            schemeId: scheme.id,
+            schemeName: scheme.name,
+            expectedAmount: expectedDaily,
+            actualAmount: 0,
+            commissionRate: commissionRate
+          });
+        }
+      });
+    });
+
+    // Calculate monthly profits
+    const daysInCurrentMonth = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 0).getDate();
+    totalMonthlyProfits = totalDailyProfits * daysInCurrentMonth;
+
+    // Calculate collection rate
+    const collectionRate = totalExpectedDaily > 0 ? ((totalActualDaily / totalExpectedDaily) * 100).toFixed(2) : 0;
+
+    // Debug logging for totals
+    console.log('Total Expected Daily:', totalExpectedDaily);
+    console.log('Total Actual Daily:', totalActualDaily);
+    console.log('Total Daily Profits:', totalDailyProfits);
+    console.log('Collection Rate:', collectionRate);
+
+    const stats = {
+      date: targetDate.toISOString().split('T')[0],
+      totals: {
+        expectedDaily: totalExpectedDaily,
+        actualDaily: totalActualDaily,
+        dailyProfits: totalDailyProfits,
+        monthlyProfits: totalMonthlyProfits,
+        collectionRate: parseFloat(collectionRate),
+        daysInMonth: daysInCurrentMonth
+      },
+      breakdown: {
+        paidCustomers: paidCustomers,
+        pendingCustomers: pendingCustomers,
+        backlogs: backlogs
+      },
+      summary: {
+        totalCustomers: activeCustomers.length,
+        paidCount: paidCustomers.length,
+        pendingCount: pendingCustomers.length,
+        backlogCount: backlogs.length,
+        totalBacklogAmount: backlogs.reduce((sum, b) => sum + b.backlogAmount, 0)
+      }
+    };
+
+    res.json({
+      success: true,
+      data: { stats }
+    });
+  } catch (error) {
+    console.error('Get passbook stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch passbook statistics',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
+// Get recent activities for dashboard
+router.get('/recent-activities', authenticateToken, async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+    const take = parseInt(limit);
+
+    // Get recent collections
+    const recentCollections = await prisma.collection.findMany({
+      take: Math.ceil(take / 2),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: {
+          select: {
+            id: true,
+            name: true,
+            mobile: true
+          }
+        }
+      }
+    });
+
+    // Get recent auctions
+    const recentAuctions = await prisma.auction.findMany({
+      take: Math.ceil(take / 2),
+      orderBy: { createdAt: 'desc' },
+      include: {
+        chitScheme: {
+          select: {
+            id: true,
+            name: true,
+            chitValue: true
+          }
+        },
+        winningMember: {
+          select: {
+            id: true,
+            name: true,
+            mobile: true
+          }
+        }
+      }
+    });
+
+    // Get recent customer registrations
+    const recentCustomers = await prisma.customer.findMany({
+      take: Math.ceil(take / 3),
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        mobile: true,
+        status: true,
+        createdAt: true
+      }
+    });
+
+    // Combine and format activities
+    const activities = [];
+
+    // Add collections
+    recentCollections.forEach(collection => {
+      activities.push({
+        id: `collection-${collection.id}`,
+        type: 'collection',
+        title: 'Collection Recorded',
+        description: `₹${collection.amountPaid.toLocaleString()} collected from ${collection.customer.name}`,
+        customer: collection.customer,
+        amount: collection.amountPaid,
+        date: collection.createdAt,
+        icon: '💰',
+        color: 'green'
+      });
+    });
+
+    // Add auctions
+    recentAuctions.forEach(auction => {
+      activities.push({
+        id: `auction-${auction.id}`,
+        type: 'auction',
+        title: 'Auction Conducted',
+        description: auction.winningMember 
+          ? `Auction won by ${auction.winningMember.name} for ₹${auction.amountReceived.toLocaleString()}`
+          : `Auction scheduled for ${auction.chitScheme.name}`,
+        customer: auction.winningMember,
+        amount: auction.amountReceived,
+        date: auction.createdAt,
+        icon: '🔨',
+        color: 'blue'
+      });
+    });
+
+    // Add customer registrations
+    recentCustomers.forEach(customer => {
+      activities.push({
+        id: `customer-${customer.id}`,
+        type: 'registration',
+        title: 'New Customer Registered',
+        description: `${customer.name} joined the system`,
+        customer: customer,
+        amount: 0,
+        date: customer.createdAt,
+        icon: '👤',
+        color: 'purple'
+      });
+    });
+
+    // Sort by date and limit
+    activities.sort((a, b) => new Date(b.date) - new Date(a.date));
+    const limitedActivities = activities.slice(0, take);
+
+    res.json({
+      success: true,
+      data: { activities: limitedActivities }
+    });
+  } catch (error) {
+    console.error('Get recent activities error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch recent activities',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
+    });
+  }
+});
+
 // Get monthly report data
 router.get('/monthly', authenticateToken, async (req, res) => {
   try {
