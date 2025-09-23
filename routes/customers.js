@@ -175,92 +175,22 @@ router.post('/', authenticateToken, requireAgentOrAdmin, customerValidations.cre
       name,
       mobile,
       address,
-      schemeId,
-      startDate,
-      lastDate,
-      amountPerDay,
-      duration,
-      durationType = 'MONTHS',
-      photo,
-      status = 'ACTIVE',
-      documents = []
+      photo
     } = req.body;
-
-    // Verify scheme exists
-    const scheme = await prisma.chitScheme.findUnique({
-      where: { id: schemeId }
-    });
-
-    if (!scheme) {
-      return res.status(400).json({
-        success: false,
-        message: 'Chit scheme not found'
-      });
-    }
-
-    // Check if scheme has capacity
-    if (scheme.membersEnrolled >= scheme.numberOfMembers) {
-      return res.status(400).json({
-        success: false,
-        message: 'Chit scheme is full'
-      });
-    }
-
-    // Calculate initial balance
-    const totalAmount = amountPerDay * duration;
-    const balance = totalAmount;
 
     const customer = await prisma.customer.create({
       data: {
         name,
         mobile,
         address,
-        startDate: new Date(startDate),
-        lastDate: lastDate ? new Date(lastDate) : null,
-        amountPerDay,
-        duration,
-        durationType,
         photo,
-        status,
-        documents,
-        balance,
-        schemes: {
-          create: {
-            schemeId,
-            amountPerDay,
-            duration,
-            durationType,
-            startDate: new Date(startDate),
-            lastDate: lastDate ? new Date(lastDate) : null,
-            balance
-          }
-        }
-      },
-      include: {
-        schemes: {
-          include: {
-            scheme: {
-              select: {
-                id: true,
-                name: true,
-                chitValue: true,
-                duration: true,
-                durationType: true,
-                dailyPayment: true
-              }
-            }
-          }
-        }
-      }
-    });
-
-    // Update scheme members enrolled count
-    await prisma.chitScheme.update({
-      where: { id: schemeId },
-      data: {
-        membersEnrolled: {
-          increment: 1
-        }
+        startDate: new Date(), // Default to current date
+        amountPerDay: 0, // Default values
+        duration: 0,
+        durationType: 'MONTHS',
+        status: 'ACTIVE',
+        balance: 0,
+        documents: []
       }
     });
 

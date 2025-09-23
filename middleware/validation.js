@@ -133,19 +133,12 @@ const customerValidations = {
     body('name').trim().isLength({ min: 2 }).withMessage('Name must be at least 2 characters'),
     body('mobile').isMobilePhone('en-IN').withMessage('Valid mobile number is required'),
     body('address').trim().isLength({ min: 10 }).withMessage('Address must be at least 10 characters'),
-    body('schemeId').isString().notEmpty().withMessage('Valid scheme ID is required'),
-    body('startDate').isISO8601().withMessage('Valid start date is required'),
-    body('lastDate').optional().isISO8601().withMessage('Valid last date is required'),
-    body('amountPerDay').isInt({ min: 1 }).withMessage('Amount per day must be at least ₹1'),
-    body('duration').isInt({ min: 1 }).withMessage('Duration must be at least 1'),
-    body('durationType').optional().isIn(['DAYS', 'MONTHS']).withMessage('Duration type must be DAYS or MONTHS'),
     body('photo').optional().custom((value) => {
       if (value !== null && value !== undefined && typeof value !== 'string') {
         throw new Error('Photo must be a valid string or null');
       }
       return true;
-    }),
-    body('status').optional().isIn(['ACTIVE', 'COMPLETED', 'DEFAULTED']).withMessage('Invalid status')
+    })
   ],
   
   update: [

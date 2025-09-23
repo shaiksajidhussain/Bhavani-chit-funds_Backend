@@ -181,21 +181,8 @@ router.post('/', authenticateToken, requireAgentOrAdmin, passbookValidations.cre
       });
     }
 
-    // Check if entry already exists for this month
-    const existingEntry = await prisma.passbookEntry.findFirst({
-      where: {
-        customerSchemeId: customerScheme.id,
-        month: month ? parseInt(month) : new Date(date).getMonth() + 1,
-        type: 'MANUAL'
-      }
-    });
-
-    if (existingEntry) {
-      return res.status(400).json({
-        success: false,
-        message: 'Manual entry already exists for this month'
-      });
-    }
+    // Allow multiple manual entries for the same month
+    // Users can add as many daily or monthly entries as they want
 
     const entry = await prisma.passbookEntry.create({
       data: {
