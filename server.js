@@ -208,10 +208,14 @@ app.use((req, res, next) => {
     'http://localhost:3001', 
     'http://localhost:5173',
     'http://localhost:4173',
+
     // Vercel deployments
     'https://bhavani-chit-funds.vercel.app',
     'https://bhavani-chit-funds-git-main.vercel.app',
     'https://bhavani-chit-funds-git-develop.vercel.app',
+    'https://bhavanichits.com',
+    'https://www.bhavanichits.com',
+    'https://www.bhavanichits.com/',
     // Environment variable for custom domains
     process.env.CORS_ORIGIN
   ].filter(Boolean);
